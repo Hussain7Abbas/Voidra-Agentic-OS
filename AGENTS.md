@@ -1,0 +1,33 @@
+# Voidra project instructions
+
+## Current phase
+
+- Implementation began on 2026-09-20 after the user explicitly requested it. P00–P04 are complete; P05 is in progress. Build phases in dependency order from `plan/main.md`; do not implement later product behavior by bypassing an earlier phase's isolation or persistence boundaries.
+- Read `PLANNING.md` for product scope/research and `plan/main.md` for the detailed phase index, decision register, and testing strategy. Keep confirmed requirements distinct from recommendations, implementation assumptions, and unanswered questions.
+- The user's explicit instructions take precedence over this file.
+
+## Product requirements to preserve
+
+- Build a Jarvis-like personal assistant for macOS first using Next.js and Electron.
+- Support independent local workspace directories, workspace-specific memory/personas/settings, explicit shared knowledge bases, and local indexing.
+- Workspace settings override global defaults. Never silently merge private workspace memory, conversations, accounts, or browser sessions.
+- Preserve the MCP marketplace/custom servers, Markdown editor/preview, linked and tag-searchable graph, HTML artifacts, ordinary and agent-controlled browsing, customizable jobs, voice, and awake-Mac remote access.
+- Plan the Day is the default job; users can customize it and create other routines.
+- Use OpenRouter for automatic execution and the user's ElevenLabs voice for speech.
+- Support per-skill/routine manual Claude or Codex subscription handoffs: assemble and preview a prompt locally, then copy it for the user to paste. Do not require an API key or silently call an API for prompt assembly. Preferred model selection is ultimately applied by the user in the destination client.
+- Follow the awake-only execution constraint. A scheduled manual routine prepares a handoff and waits; it must not submit to a subscription client or overwrite the clipboard in the background.
+
+## Instruction file convention
+
+- This root `AGENTS.md` applies throughout the project. Add nested `AGENTS.md` files only where a scope needs additional rules; deeper rules apply within their own scope.
+- Every `AGENTS.md` must have a sibling `CLAUDE.md` containing the exact import line `@AGENTS.md`. Keep the canonical rules in `AGENTS.md` rather than duplicating them.
+- Before working in a subdirectory, read applicable root-to-target instructions. For changes spanning scopes, check each affected scope; do not apply sibling rules globally.
+- Use this same paired-file convention in the future Voidra workspace creation and scoped-instruction features.
+- Preserve existing user-authored instructions. Reconcile conflicts explicitly rather than overwriting them.
+
+## Planning and verification
+
+- Keep research grounded in official documentation and distinguish documented behavior from design proposals.
+- Do not present future features as already implemented or claim client compatibility has been runtime-tested when only the instruction files were checked.
+- Validate changed document content and instruction-file pairing. Do not run nonexistent application tests or invent a package setup during planning.
+- Future implementation must include unit tests and Playwright end-to-end tests as specified in each phase. Native/provider mocks must not be presented as proof of real macOS or live-service behavior.

@@ -1,0 +1,90 @@
+{
+  "name": "voidra",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "A local-first, workspace-scoped personal assistant for macOS.",
+  "author": "Voidra contributors",
+  "main": "dist/electron/main.cjs",
+  "packageManager": "pnpm@10.30.3",
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "scripts": {
+    "dev:web": "next dev",
+    "dev:electron": "pnpm build && electron .",
+    "build:web": "next build",
+    "build:desktop": "node scripts/build-desktop.mjs",
+    "build": "pnpm build:web && pnpm build:desktop",
+    "start": "pnpm build && electron .",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "test:e2e": "pnpm build && playwright test",
+    "package:dir": "pnpm build && electron-builder --dir --arm64",
+    "smoke:package": "node scripts/smoke-package.mjs",
+    "verify": "pnpm typecheck && pnpm test && pnpm test:e2e"
+  },
+  "dependencies": {
+    "better-sqlite3": "13.0.3"
+  },
+  "devDependencies": {
+    "@codemirror/lang-markdown": "6.5.2",
+    "@playwright/test": "1.63.0",
+    "@types/better-sqlite3": "7.6.13",
+    "@types/node": "24.10.1",
+    "@types/react": "19.2.14",
+    "@types/react-dom": "19.2.3",
+    "@uiw/react-codemirror": "4.25.11",
+    "@vitest/coverage-v8": "5.0.1",
+    "dompurify": "3.4.15",
+    "electron": "44.4.3",
+    "electron-builder": "26.15.3",
+    "esbuild": "0.28.2",
+    "marked": "18.0.13",
+    "next": "16.3.5",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "typescript": "7.0.2",
+    "vitest": "5.0.1",
+    "zod": "4.6.5"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "better-sqlite3",
+      "electron",
+      "esbuild"
+    ]
+  },
+  "build": {
+    "appId": "dev.voidra.desktop",
+    "productName": "Voidra",
+    "asar": true,
+    "asarUnpack": [
+      "node_modules/better-sqlite3/**"
+    ],
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**",
+      "out/**",
+      "package.json",
+      "node_modules/better-sqlite3/**",
+      "node_modules/bindings/**",
+      "node_modules/file-uri-to-path/**"
+    ],
+    "mac": {
+      "category": "public.app-category.productivity",
+      "target": [
+        {
+          "target": "dir",
+          "arch": [
+            "arm64"
+          ]
+        }
+      ]
+    }
+  }
+}

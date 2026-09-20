@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-labelledby="title">
+  <title id="title">Voidra</title>
+  <defs>
+    <linearGradient id="g" x1="8" y1="8" x2="56" y2="56" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#84f7d5"/>
+      <stop offset="1" stop-color="#8da2ff"/>
+    </linearGradient>
+  </defs>
+  <path d="M9 14 29 4l6 15 20-6-7 38-18 9L9 48Z" fill="#101626" stroke="url(#g)" stroke-width="3" stroke-linejoin="round"/>
+  <path d="m21 23 11 24 12-27" fill="none" stroke="url(#g)" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
