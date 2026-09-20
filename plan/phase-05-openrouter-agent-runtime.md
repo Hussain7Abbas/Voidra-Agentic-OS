@@ -1,6 +1,6 @@
 # P05 — OpenRouter agent runtime and autonomy
 
-Implementation status: in progress as of 2026-09-20. The streaming adapter, durable task journal, path-scoped grants, review UI, cancellation, limits, and uncertain-effect recovery are implemented against a local OpenRouter-shaped fixture; credential storage, full context re-resolution, remaining cross-workspace/revocation races, and live-provider smoke are not yet complete.
+Implementation status: completed on 2026-09-20. The streaming adapter, secure credential boundary, durable task journal, per-step context re-resolution, path-scoped grants, review UI, step/token/runtime limits, cancellation/Stop All, and uncertain-effect recovery are implemented and verified against a local OpenRouter-shaped fixture. See [ADR 0006](../docs/architecture/0006-openrouter-agent-runtime.md) and the [P05 verification report](../docs/verification/p05.md). The opt-in live-provider smoke was not run because no user credential was supplied; this is recorded as an external verification boundary, not simulated evidence.
 
 [Plan index](main.md) · Previous: [P04](phase-04-skills-routines-manual-handoffs.md) · Next: [P06](phase-06-mcp-marketplace.md)
 

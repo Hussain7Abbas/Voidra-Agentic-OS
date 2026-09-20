@@ -2,6 +2,8 @@
 
 [Plan index](main.md) · Previous: [P06](phase-06-mcp-marketplace.md) · Next: [P08](phase-08-browser-artifacts.md)
 
+Implementation status: automated implementation completed on 2026-09-20. Local/manual and automatic planning, fixture calendar application, awake-only schedules, catch-up, and notification dispatch have automated evidence. A live Q04 provider and physical Mac sleep/resume/notification observations remain pending and are not claimed as passed exit evidence.
+
 ## Outcome and prerequisites
 
 Plan the Day is an editable default routine. Users create other on-demand/scheduled routines and receive meaningful results while the Mac is awake. Manual routines remain usable without model API credentials.

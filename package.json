@@ -27,10 +27,13 @@
     "verify": "pnpm typecheck && pnpm test && pnpm test:e2e"
   },
   "dependencies": {
+    "@modelcontextprotocol/client": "2.0.0",
     "better-sqlite3": "13.0.3"
   },
   "devDependencies": {
     "@codemirror/lang-markdown": "6.5.2",
+    "@modelcontextprotocol/node": "2.0.0",
+    "@modelcontextprotocol/server": "2.0.0",
     "@playwright/test": "1.63.0",
     "@types/better-sqlite3": "7.6.13",
     "@types/node": "24.10.1",

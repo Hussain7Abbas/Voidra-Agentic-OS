@@ -1,6 +1,6 @@
 # Voidra — planning and feature decisions
 
-Research date: 2026-09-20. Status: planning baseline incorporating the user's decisions; proposed implementation details and autonomy defaults are identified below. P00–P04 implementation completed on 2026-09-20; detailed progress is tracked in the phase index and implementation records.
+Research date: 2026-09-20. Status: planning baseline incorporating the user's decisions; proposed implementation details and autonomy defaults are identified below. P00–P06 and P07's automated implementation completed on 2026-09-20; P07 live/native acceptance remains pending. Detailed progress is tracked in the phase index and implementation records.
 
 Detailed implementation phases now live in [plan/main.md](plan/main.md). That index owns the phase sequence, refinement-question register, and unit/Playwright E2E strategy. This document retains product decisions and research context; phase-level dependencies supersede the earlier candidate S-number backlog below.
 

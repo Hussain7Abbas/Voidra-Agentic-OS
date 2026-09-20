@@ -2,7 +2,7 @@
 
 ## Current phase
 
-- Implementation began on 2026-09-20 after the user explicitly requested it. P00–P04 are complete; P05 is in progress. Build phases in dependency order from `plan/main.md`; do not implement later product behavior by bypassing an earlier phase's isolation or persistence boundaries.
+- Implementation began on 2026-09-20 after the user explicitly requested it. P00–P06 are complete; P07 automated implementation is complete with live/native acceptance still pending, and P08 is next. Build phases in dependency order from `plan/main.md`; do not implement later product behavior by bypassing an earlier phase's isolation or persistence boundaries.
 - Read `PLANNING.md` for product scope/research and `plan/main.md` for the detailed phase index, decision register, and testing strategy. Keep confirmed requirements distinct from recommendations, implementation assumptions, and unanswered questions.
 - The user's explicit instructions take precedence over this file.
 

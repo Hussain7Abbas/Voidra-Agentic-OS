@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, nativeImage, Tray, WebContentsView } from "electron";
+import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, nativeImage, Notification, safeStorage, Tray, WebContentsView } from "electron";
 import { IPC_CHANNELS, WORKSPACE_ID_EXAMPLE, type ServiceRequest, type ServiceStateEvent } from "../shared/contracts";
 import { installAppProtocol, registerAppScheme } from "./app-protocol";
 import { ServiceSupervisor } from "./service-supervisor";
@@ -20,6 +20,51 @@ let quitting = false;
 let supervisor: ServiceSupervisor;
 let folderResults: Array<string | null> = [];
 let testClipboard = "";
+const notifiedOccurrences = new Set<string>();
+
+function openRouterCredentialPath() { return join(app.getPath("userData"), "secrets", "openrouter.bin"); }
+function mcpCredentialDirectory() { return join(app.getPath("userData"), "secrets", "mcp"); }
+function assertConnectionId(value: unknown): asserts value is string {
+  if (typeof value !== "string" || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)) throw new Error("Invalid MCP connection identity.");
+}
+function mcpCredentialPath(connectionId: string) { return join(mcpCredentialDirectory(), `${connectionId}.bin`); }
+
+function readOpenRouterCredential() {
+  if (process.env.VOIDRA_OPENROUTER_TEST_KEY) return process.env.VOIDRA_OPENROUTER_TEST_KEY;
+  if (!safeStorage.isEncryptionAvailable()) return null;
+  try { return safeStorage.decryptString(readFileSync(openRouterCredentialPath())); }
+  catch { return null; }
+}
+
+function writeOpenRouterCredential(value: string) {
+  if (!safeStorage.isEncryptionAvailable()) throw new Error("Secure credential storage is unavailable on this Mac.");
+  const path = openRouterCredentialPath();
+  mkdirSync(resolve(path, ".."), { recursive: true });
+  writeFileSync(path, safeStorage.encryptString(value), { mode: 0o600 });
+}
+
+function readMcpCredential(connectionId: string) {
+  if (!safeStorage.isEncryptionAvailable()) return null;
+  try { return safeStorage.decryptString(readFileSync(mcpCredentialPath(connectionId))); }
+  catch { return null; }
+}
+
+function writeMcpCredential(connectionId: string, value: string) {
+  if (!safeStorage.isEncryptionAvailable()) throw new Error("Secure credential storage is unavailable on this Mac.");
+  mkdirSync(mcpCredentialDirectory(), { recursive: true });
+  writeFileSync(mcpCredentialPath(connectionId), safeStorage.encryptString(value), { mode: 0o600 });
+}
+
+function restoreMcpCredentials() {
+  try {
+    for (const entry of readdirSync(mcpCredentialDirectory())) {
+      const connectionId = entry.endsWith(".bin") ? entry.slice(0, -4) : "";
+      try { assertConnectionId(connectionId); }
+      catch { continue; }
+      supervisor.setCredential(`mcp:${connectionId}`, readMcpCredential(connectionId));
+    }
+  } catch { /* No MCP credentials have been configured. */ }
+}
 
 if (isTestMode && process.env.VOIDRA_TEST_FOLDER_RESULTS) {
   try {
@@ -123,6 +168,43 @@ function registerIpc() {
     else clipboard.writeText(text);
     return { copied: true };
   });
+  ipcMain.handle(IPC_CHANNELS.openRouterCredentialStatus, (event) => {
+    assertTrustedSender(event.senderFrame?.url);
+    return { configured: Boolean(readOpenRouterCredential()), secureStorageAvailable: safeStorage.isEncryptionAvailable() };
+  });
+  ipcMain.handle(IPC_CHANNELS.setOpenRouterCredential, (event, value: unknown) => {
+    assertTrustedSender(event.senderFrame?.url);
+    if (typeof value !== "string" || value.trim().length < 12 || value.length > 500) throw new Error("The OpenRouter credential is invalid.");
+    writeOpenRouterCredential(value.trim());
+    supervisor.setCredential("openrouter", value.trim());
+    return { configured: true };
+  });
+  ipcMain.handle(IPC_CHANNELS.deleteOpenRouterCredential, (event) => {
+    assertTrustedSender(event.senderFrame?.url);
+    rmSync(openRouterCredentialPath(), { force: true });
+    supervisor.setCredential("openrouter", null);
+    return { configured: false };
+  });
+  ipcMain.handle(IPC_CHANNELS.mcpCredentialStatus, (event, connectionId: unknown) => {
+    assertTrustedSender(event.senderFrame?.url);
+    assertConnectionId(connectionId);
+    return { configured: Boolean(readMcpCredential(connectionId)), secureStorageAvailable: safeStorage.isEncryptionAvailable() };
+  });
+  ipcMain.handle(IPC_CHANNELS.setMcpCredential, (event, connectionId: unknown, value: unknown) => {
+    assertTrustedSender(event.senderFrame?.url);
+    assertConnectionId(connectionId);
+    if (typeof value !== "string" || !value.trim() || value.length > 20_000) throw new Error("The MCP credential is invalid.");
+    writeMcpCredential(connectionId, value.trim());
+    supervisor.setCredential(`mcp:${connectionId}`, value.trim());
+    return { configured: true };
+  });
+  ipcMain.handle(IPC_CHANNELS.deleteMcpCredential, (event, connectionId: unknown) => {
+    assertTrustedSender(event.senderFrame?.url);
+    assertConnectionId(connectionId);
+    rmSync(mcpCredentialPath(connectionId), { force: true });
+    supervisor.setCredential(`mcp:${connectionId}`, null);
+    return { configured: false };
+  });
 
   if (isTestMode) {
     ipcMain.handle(IPC_CHANNELS.testCrash, (event) => {
@@ -178,6 +260,17 @@ app.whenReady().then(async () => {
   });
   supervisor.on("state", broadcastState);
   supervisor.on("log", (message) => console.error(`[local-service] ${message}`));
+  supervisor.on("service-event", (event) => {
+    if (event.type !== "schedule.occurrence" || !Notification.isSupported()) return;
+    const occurrenceId = typeof event.payload.occurrenceId === "string" ? event.payload.occurrenceId : "";
+    if (!occurrenceId || notifiedOccurrences.has(occurrenceId)) return;
+    notifiedOccurrences.add(occurrenceId);
+    const notification = new Notification({ title: String(event.payload.scheduleName ?? "Voidra routine"), body: event.payload.state === "ready-to-copy" ? "A manual handoff is ready for review and copy." : `Scheduled run: ${String(event.payload.state ?? "updated")}` });
+    notification.on("click", () => { mainWindow?.show(); app.focus(); });
+    notification.show();
+  });
+  supervisor.setCredential("openrouter", readOpenRouterCredential());
+  restoreMcpCredentials();
   registerIpc();
   createTray();
   const window = createWindow();

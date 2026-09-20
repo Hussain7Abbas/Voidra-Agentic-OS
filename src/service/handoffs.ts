@@ -39,6 +39,7 @@ const runRegistrySchema = z.object({ schemaVersion: z.literal(1), runs: z.array(
 
 type SkillRegistry = z.infer<typeof skillRegistrySchema>;
 type RoutineRegistry = z.infer<typeof routineRegistrySchema>;
+type RoutineRecord = RoutineRegistry["routines"][number];
 type RunRegistry = z.infer<typeof runRegistrySchema>;
 type RunRecord = z.infer<typeof runSchema>;
 
@@ -58,7 +59,7 @@ async function atomicWrite(path: string, content: string) {
   catch (error) { await rm(temporary, { force: true }); throw error; }
 }
 
-function redactSecrets(content: string) {
+export function redactSecrets(content: string) {
   return content
     .replace(/keychain:\/\/[^\s)]+/gi, "[REDACTED CREDENTIAL REFERENCE]")
     .replace(/-----BEGIN [^-]+ PRIVATE KEY-----[\s\S]*?-----END [^-]+ PRIVATE KEY-----/g, "[REDACTED PRIVATE KEY]")
@@ -67,6 +68,8 @@ function redactSecrets(content: string) {
 }
 
 export class ManualHandoffManager {
+  readonly #defaultRoutines = new Map<string, Promise<RoutineRecord>>();
+
   constructor(
     private readonly workspaces: WorkspaceManager,
     private readonly instructions: InstructionResolver,
@@ -107,6 +110,33 @@ export class ManualHandoffManager {
 
   async listRoutines(workspace: WorkspaceRecord) { return (await this.#routines(workspace)).routines; }
 
+  async ensurePlanTheDay(workspace: WorkspaceRecord) {
+    const existing = (await this.#routines(workspace)).routines.find(({ name }) => name === "Plan the Day");
+    if (existing) return existing;
+    const pending = this.#defaultRoutines.get(workspace.id);
+    if (pending) return pending;
+    const creation = (async () => {
+      const skill = await this.createSkill(workspace, {
+        name: "Plan the Day",
+        description: "Build a sourced daily plan that separates commitments, deadlines, suggested blocks, optional work, and unresolved conflicts.",
+        instructions: "Use only supplied workspace context. Preserve source identifiers and timezone. Do not invent availability, external events, or permission to modify a calendar. Return editable Markdown with Commitments, Deadlines, Suggested blocks, Optional tasks, Sources, and Unresolved conflicts sections.",
+        expectedOutput: "an editable, sourced Markdown daily plan",
+        inputs: ["date", "timezone", "local tasks", "availability", "selected sources"],
+      });
+      return this.createRoutine(workspace, {
+        name: "Plan the Day",
+        skillId: skill.id,
+        client: "codex",
+        preferredModel: "use current client model",
+        outputDirectory: "Daily Plans",
+        inlineInstructions: "Calendar changes are suggestions only unless the user separately reviews and authorizes an exact connector call.",
+      });
+    })();
+    this.#defaultRoutines.set(workspace.id, creation);
+    try { return await creation; }
+    finally { this.#defaultRoutines.delete(workspace.id); }
+  }
+
   async createRoutine(workspace: WorkspaceRecord, input: { name: string; skillId: string; client: "claude" | "codex"; preferredModel: string; outputDirectory: string; inlineInstructions: string }) {
     const skills = await this.#skills(workspace);
     const skill = skills.skills.find(({ id }) => id === input.skillId);
@@ -128,6 +158,19 @@ export class ManualHandoffManager {
     const now = new Date().toISOString();
     const routine = { ...source, id: randomUUID(), name: input.name.trim(), client: input.client, preferredModel: input.preferredModel || "use current client model", createdAt: now, updatedAt: now };
     registry.routines.push(routine);
+    await this.#writeRoutines(workspace, registry);
+    return routine;
+  }
+
+  async updateRoutine(workspace: WorkspaceRecord, routineId: string, input: { name: string; skillId: string; client: "claude" | "codex"; preferredModel: string; outputDirectory: string; inlineInstructions: string }) {
+    const skills = await this.#skills(workspace);
+    const skill = skills.skills.find(({ id }) => id === input.skillId);
+    if (!skill) throw new DomainError("WORKSPACE_CONFLICT", "The routine skill does not exist in this workspace.");
+    await this.#safeOutputPath(workspace, input.outputDirectory || ".", true);
+    const registry = await this.#routines(workspace);
+    const routine = registry.routines.find(({ id }) => id === routineId);
+    if (!routine) throw new DomainError("WORKSPACE_CONFLICT", "The routine does not exist in this workspace.");
+    Object.assign(routine, { name: input.name.trim(), skillId: skill.id, skillVersion: skill.version, client: input.client, preferredModel: input.preferredModel || "use current client model", outputDirectory: input.outputDirectory || ".", inlineInstructions: input.inlineInstructions, updatedAt: new Date().toISOString() });
     await this.#writeRoutines(workspace, registry);
     return routine;
   }

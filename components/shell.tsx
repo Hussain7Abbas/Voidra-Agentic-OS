@@ -9,6 +9,9 @@ import { MemoryPanel } from "@/components/memory-panel";
 import { NotesPanel } from "@/components/notes-panel";
 import { HandoffPanel } from "@/components/handoff-panel";
 import { AgentPanel } from "@/components/agent-panel";
+import { McpPanel } from "@/components/mcp-panel";
+import { PlannerPanel } from "@/components/planner-panel";
+import { SchedulePanel } from "@/components/schedule-panel";
 
 const FALLBACK_WORKSPACE_ID = "018f0f73-89db-7a63-a1b2-5d46f598ed01";
 
@@ -40,12 +43,12 @@ const navigation: Array<{ id: SectionId; label: string; symbol: string }> = [
 ];
 
 const copy: Record<SectionId, { eyebrow: string; title: string; body: string }> = {
-  today: { eyebrow: "Your local day", title: "Good evening.", body: "Each workspace now has an independent directory, identity, settings, persona, and instruction scope." },
+  today: { eyebrow: "Your local day", title: "Plan the day.", body: "Build an editable, sourced plan from this workspace's local tasks, availability, and explicitly supplied commitments." },
   assistant: { eyebrow: "Quick assistant", title: "What can I help with?", body: "Every request carries its owning workspace even if the visible workspace changes before it completes." },
   notes: { eyebrow: "Private knowledge", title: "Notes", body: "Canonical Markdown, backlinks, revision recovery, and local indexing stay inside this workspace." },
   graph: { eyebrow: "Accessible knowledge", title: "Knowledge graph", body: "Private notes and explicitly attached bases retain visible source and access boundaries." },
   browser: { eyebrow: "Workspace session", title: "Browser", body: "Ordinary tabs, agent-controlled tabs, and isolated artifact previews will use separate security boundaries." },
-  jobs: { eyebrow: "Awake-Mac runtime", title: "Jobs", body: "Plan the Day will ship as an editable default job alongside user-defined routines." },
+  jobs: { eyebrow: "Awake-Mac runtime", title: "Jobs", body: "Manual and automatic routines remain bound to their workspace, timezone, and awake-only schedule." },
   settings: { eyebrow: "Global and workspace", title: "Settings", body: "Workspace overrides show their effective value and origin without merging private context." },
 };
 
@@ -149,6 +152,8 @@ function SettingsPanel({ workspace, registry, request, reloadRegistry }: { works
   const [baseName, setBaseName] = useState("");
   const [basePath, setBasePath] = useState("");
   const [baseAccess, setBaseAccess] = useState<"read" | "write">("read");
+  const [openRouterKey, setOpenRouterKey] = useState("");
+  const [openRouterStatus, setOpenRouterStatus] = useState<{ configured: boolean; secureStorageAvailable: boolean } | null>(null);
 
   const load = useCallback(async () => {
     const result = await request("settings.get", {}, workspace.id);
@@ -175,6 +180,7 @@ function SettingsPanel({ workspace, registry, request, reloadRegistry }: { works
   }, [request, workspace.id]);
 
   useEffect(() => { void loadAttachments(); }, [loadAttachments]);
+  useEffect(() => { void window.voidra?.secrets.openRouterStatus().then(setOpenRouterStatus); }, []);
 
   const chooseBaseFolder = async () => {
     const result = await window.voidra?.shell.chooseDirectory();
@@ -285,6 +291,14 @@ function SettingsPanel({ workspace, registry, request, reloadRegistry }: { works
         <button onClick={attachBase} disabled={!baseName.trim() || !basePath}>Attach base</button>
         <div className="attachment-list">{attachments.map((attachment) => <div key={attachment.baseId}><span><strong>{attachment.name}</strong><small>{attachment.canonicalPath}<br />{attachment.available ? attachment.access : "unavailable"}</small></span><select aria-label={`${attachment.name} access`} value={attachment.access} onChange={async (event) => { const result = await request("knowledge.setAccess", { baseId: attachment.baseId, access: event.target.value }, workspace.id); setMessage(result.ok ? "Attachment access updated." : result.error.message); await loadAttachments(); }}><option value="read">Read</option><option value="write">Write</option></select>{!attachment.available && <button onClick={async () => { const folder = await window.voidra?.shell.chooseDirectory(); if (folder?.path) { await request("knowledge.locate", { baseId: attachment.baseId, path: folder.path }, workspace.id); await loadAttachments(); } }}>Locate</button>}<button onClick={async () => { await request("knowledge.detach", { baseId: attachment.baseId }, workspace.id); await loadAttachments(); }}>Detach</button></div>)}</div>
       </article>
+      <article className="panel settings-card">
+        <p className="card-label">OPENROUTER CREDENTIAL</p>
+        <small>The key is encrypted through macOS secure storage and is never returned to this page or written into workspace task journals.</small>
+        <label>API key<input aria-label="OpenRouter API key" type="password" autoComplete="off" value={openRouterKey} onChange={(event) => setOpenRouterKey(event.target.value)} placeholder={openRouterStatus?.configured ? "Configured — enter a replacement" : "sk-or-…"} /></label>
+        <div className="button-row"><button disabled={!openRouterKey || !openRouterStatus?.secureStorageAvailable} onClick={async () => { try { const status = await window.voidra?.secrets.setOpenRouter(openRouterKey); setOpenRouterKey(""); if (status) setOpenRouterStatus({ ...status, secureStorageAvailable: true }); setMessage("OpenRouter credential stored securely."); } catch { setMessage("OpenRouter credential could not be stored securely."); } }}>Save credential</button>{openRouterStatus?.configured && <button className="danger-button" onClick={async () => { const status = await window.voidra?.secrets.deleteOpenRouter(); if (status) setOpenRouterStatus({ ...status, secureStorageAvailable: openRouterStatus.secureStorageAvailable }); setMessage("OpenRouter credential removed."); }}>Remove credential</button>}</div>
+        <small data-testid="openrouter-credential-status">{openRouterStatus?.configured ? "Configured" : openRouterStatus?.secureStorageAvailable ? "Not configured" : "Secure storage unavailable"}</small>
+      </article>
+      <McpPanel workspaceId={workspace.id} request={request} />
       {message && <p className="save-message" role="status">{message}</p>}
     </div>
   );
@@ -333,10 +347,13 @@ export function Shell({ section }: { section: SectionId }) {
   }, [request]);
 
   useEffect(() => {
-    const prior = localStorage.getItem("voidra.lastSectionBeforeLaunch");
-    if (section === "today" && prior && prior !== "today" && sectionIds.includes(prior as SectionId)) {
-      window.location.replace(routeFor(prior as SectionId));
-      return;
+    if (sessionStorage.getItem("voidra.routeRestored") !== "true") {
+      sessionStorage.setItem("voidra.routeRestored", "true");
+      const prior = localStorage.getItem("voidra.lastSectionBeforeLaunch");
+      if (section === "today" && prior && prior !== "today" && sectionIds.includes(prior as SectionId)) {
+        window.location.replace(routeFor(prior as SectionId));
+        return;
+      }
     }
     localStorage.setItem("voidra.lastSection", section);
   }, [section]);
@@ -423,7 +440,9 @@ export function Shell({ section }: { section: SectionId }) {
           {workspaceError && <div className="warning-banner" role="alert"><span>{workspaceError}</span><button onClick={() => setWorkspaceError("")}>Dismiss</button></div>}
           <p className="eyebrow">{content.eyebrow}</p><h1>{content.title}</h1><p className="lede">{content.body}</p>
 
-          {section === "settings" && selectedWorkspace ? (
+          {section === "today" && selectedWorkspace ? (
+            <div className="planner-stack"><PlannerPanel workspaceId={selectedWorkspace.id} request={request} /><div className="grid"><article className="hero-card"><div className="orb" aria-hidden="true"><span /></div><div><p className="card-label">WORKSPACE CONTEXT</p><h2>{selectedWorkspace.name}</h2><p>{selectedWorkspace.canonicalPath}</p><button className="primary" onClick={ping} disabled={!bridgeAvailable || serviceStatus !== "ready"}>Check runtime</button></div></article><article className="panel" aria-live="polite"><p className="card-label">FOUNDATION DIAGNOSTICS</p><dl><div><dt>Renderer bridge</dt><dd>{bridgeAvailable ? "Connected" : "Web preview"}</dd></div><div><dt>Service</dt><dd data-testid="service-status">{recovered ? "Recovered" : serviceStatus}</dd></div><div><dt>Workspace identity</dt><dd data-testid="workspace-id">{selectedWorkspace.id}</dd></div><div><dt>Content isolation</dt><dd data-testid="isolation-result">{isolationMessage}</dd></div></dl><div className="button-row">{diagnosticsAvailable && <button onClick={runIsolationProbe}>Test isolation</button>}{diagnosticsAvailable && <button onClick={() => window.voidra?.diagnostics?.simulateServiceCrash()}>Simulate crash</button>}</div></article></div></div>
+          ) : section === "settings" && selectedWorkspace ? (
             <SettingsPanel workspace={selectedWorkspace} registry={registry!} request={request} reloadRegistry={loadRegistry} />
           ) : section === "notes" && selectedWorkspace ? (
             <NotesPanel workspaceId={selectedWorkspace.id} request={request} />
@@ -432,7 +451,7 @@ export function Shell({ section }: { section: SectionId }) {
           ) : section === "assistant" && selectedWorkspace ? (
             <div className="assistant-stack"><AgentPanel workspaceId={selectedWorkspace.id} request={request} /><MemoryPanel workspaceId={selectedWorkspace.id} request={request} /></div>
           ) : section === "jobs" && selectedWorkspace ? (
-            <HandoffPanel workspaceId={selectedWorkspace.id} request={request} />
+            <div className="assistant-stack"><SchedulePanel workspaceId={selectedWorkspace.id} request={request} /><HandoffPanel workspaceId={selectedWorkspace.id} request={request} /></div>
           ) : (
             <div className="grid">
               <article className="hero-card"><div className="orb" aria-hidden="true"><span /></div><div><p className="card-label">{selectedWorkspace ? "WORKSPACE CONTEXT" : "DESKTOP SHELL"}</p><h2>{selectedWorkspace ? selectedWorkspace.name : "Choose your workspace."}</h2><p>{selectedWorkspace ? selectedWorkspace.canonicalPath : "Voidra keeps each assistant context in a directory you choose."}</p><button className="primary" onClick={ping} disabled={!bridgeAvailable || serviceStatus !== "ready"}>Check runtime</button></div></article>

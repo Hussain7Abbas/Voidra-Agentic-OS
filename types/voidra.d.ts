@@ -11,6 +11,14 @@ declare global {
         chooseDirectory(): Promise<{ canceled: boolean; path?: string }>;
         copyText(text: string): Promise<{ copied: true }>;
       };
+      secrets: {
+        openRouterStatus(): Promise<{ configured: boolean; secureStorageAvailable: boolean }>;
+        setOpenRouter(value: string): Promise<{ configured: true }>;
+        deleteOpenRouter(): Promise<{ configured: false }>;
+        mcpStatus(connectionId: string): Promise<{ configured: boolean; secureStorageAvailable: boolean }>;
+        setMcp(connectionId: string, value: string): Promise<{ configured: true }>;
+        deleteMcp(connectionId: string): Promise<{ configured: false }>;
+      };
       events: {
         onServiceState(callback: (event: ServiceStateEvent) => void): () => void;
       };

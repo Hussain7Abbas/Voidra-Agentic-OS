@@ -25,7 +25,7 @@ async function createRoutine(window: Page, client: "Claude" | "Codex" = "Claude"
   await window.getByLabel("Subscription client").selectOption(client.toLowerCase());
   await window.getByLabel("Preferred model").fill(model);
   await window.getByRole("button", { name: "Create routine" }).click();
-  await expect(window.getByLabel("Saved routines")).toContainText("Plan the Day");
+  await expect(window.getByLabel("Saved routines")).toContainText(model);
 }
 
 async function compileAndCopy(window: Page) {
@@ -62,7 +62,7 @@ test("duplicates a routine for Codex and preserves both preferences across resta
   let window = await application.firstWindow();
   await onboard(window);
   await createRoutine(window, "Claude", "claude-opus-user-choice");
-  await window.getByRole("button", { name: "Duplicate for other client" }).click();
+  await window.getByRole("button", { name: "Duplicate for other client" }).last().click();
   await expect(window.getByLabel("Saved routines")).toContainText("Codex");
   await application.evaluate(({ app }) => app.quit());
   await application.close();

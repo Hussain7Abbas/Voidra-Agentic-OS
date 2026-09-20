@@ -7,6 +7,7 @@ const requestIdentity = {
   workspaceId: z.uuid(),
   sessionId: z.uuid(),
 };
+const planningSources = z.array(z.object({ baseId: z.union([z.literal("private"), z.uuid()]), documentId: z.string().min(1).max(128) }).strict()).max(100).optional();
 
 export const serviceRequestSchema = z.discriminatedUnion("operation", [
   z.object({
@@ -247,6 +248,10 @@ export const serviceRequestSchema = z.discriminatedUnion("operation", [
     payload: z.object({ name: z.string().trim().min(1).max(120), skillId: z.uuid(), client: z.enum(["claude", "codex"]), preferredModel: z.string().max(200), outputDirectory: z.string().max(2048), inlineInstructions: z.string().max(100_000) }).strict(),
   }).strict(),
   z.object({
+    ...requestIdentity, operation: z.literal("routine.update"),
+    payload: z.object({ routineId: z.uuid(), name: z.string().trim().min(1).max(120), skillId: z.uuid(), client: z.enum(["claude", "codex"]), preferredModel: z.string().max(200), outputDirectory: z.string().max(2048), inlineInstructions: z.string().max(100_000) }).strict(),
+  }).strict(),
+  z.object({
     ...requestIdentity, operation: z.literal("routine.duplicate"),
     payload: z.object({ routineId: z.uuid(), name: z.string().trim().min(1).max(120), client: z.enum(["claude", "codex"]), preferredModel: z.string().max(200) }).strict(),
   }).strict(),
@@ -269,10 +274,46 @@ export const serviceRequestSchema = z.discriminatedUnion("operation", [
   z.object({ ...requestIdentity, operation: z.literal("handoff.complete"), payload: z.object({ runId: z.uuid() }).strict() }).strict(),
   z.object({ ...requestIdentity, operation: z.literal("handoff.cancel"), payload: z.object({ runId: z.uuid() }).strict() }).strict(),
   z.object({ ...requestIdentity, operation: z.literal("agent.list"), payload: z.object({}).strict() }).strict(),
-  z.object({ ...requestIdentity, operation: z.literal("agent.start"), payload: z.object({ objective: z.string().trim().min(1).max(100_000), model: z.string().trim().min(1).max(200), maxSteps: z.number().int().min(1).max(25).default(8) }).strict() }).strict(),
+  z.object({ ...requestIdentity, operation: z.literal("agent.start"), payload: z.object({ objective: z.string().trim().min(1).max(100_000), model: z.string().trim().min(1).max(200), maxSteps: z.number().int().min(1).max(25).default(8), maxTokens: z.number().int().min(1).max(10_000_000).default(50_000), maxRuntimeMs: z.number().int().min(1_000).max(3_600_000).default(300_000), targetPaths: z.array(z.string().min(1).max(2048)).max(50).default([]), sources: z.array(z.object({ baseId: z.union([z.literal("private"), z.uuid()]), documentId: z.string().min(1).max(128) }).strict()).max(100).default([]) }).strict() }).strict(),
   z.object({ ...requestIdentity, operation: z.literal("agent.approve"), payload: z.object({ taskId: z.uuid(), expiresAt: z.iso.datetime().nullable().optional() }).strict() }).strict(),
   z.object({ ...requestIdentity, operation: z.literal("agent.cancel"), payload: z.object({ taskId: z.uuid() }).strict() }).strict(),
+  z.object({ ...requestIdentity, operation: z.literal("agent.resume"), payload: z.object({ taskId: z.uuid() }).strict() }).strict(),
+  z.object({ ...requestIdentity, operation: z.literal("agent.stopAll"), payload: z.object({}).strict() }).strict(),
   z.object({ ...requestIdentity, operation: z.literal("agent.revokeGrant"), payload: z.object({ grantId: z.uuid() }).strict() }).strict(),
+  z.object({ ...requestIdentity, operation: z.literal("mcp.catalog"), payload: z.object({ query: z.string().max(200).default("") }).strict() }).strict(),
+  z.object({ ...requestIdentity, operation: z.literal("mcp.list"), payload: z.object({}).strict() }).strict(),
+  z.object({ ...requestIdentity, operation: z.literal("mcp.addStdio"), payload: z.object({ name: z.string().trim().min(1).max(120), command: z.string().trim().min(1).max(2048), args: z.array(z.string().max(4096)).max(100), cwd: z.string().max(2048).nullable().optional(), env: z.record(z.string().max(200), z.string().max(10_000)).optional() }).strict() }).strict(),
+  z.object({ ...requestIdentity, operation: z.literal("mcp.addRemote"), payload: z.object({ name: z.string().trim().min(1).max(120), url: z.url().max(4096) }).strict() }).strict(),
+  z.object({ ...requestIdentity, operation: z.literal("mcp.update"), payload: z.object({ connectionId: z.uuid(), configuration: z.discriminatedUnion("transport", [z.object({ transport: z.literal("stdio"), name: z.string().trim().min(1).max(120), command: z.string().trim().min(1).max(2048), args: z.array(z.string().max(4096)).max(100), cwd: z.string().max(2048).nullable().optional(), env: z.record(z.string().max(200), z.string().max(10_000)).optional() }).strict(), z.object({ transport: z.literal("streamable-http"), name: z.string().trim().min(1).max(120), url: z.url().max(4096) }).strict()]) }).strict() }).strict(),
+  z.object({ ...requestIdentity, operation: z.literal("mcp.rollback"), payload: z.object({ connectionId: z.uuid() }).strict() }).strict(),
+  z.object({ ...requestIdentity, operation: z.literal("mcp.connect"), payload: z.object({ connectionId: z.uuid() }).strict() }).strict(),
+  z.object({ ...requestIdentity, operation: z.literal("mcp.refresh"), payload: z.object({ connectionId: z.uuid() }).strict() }).strict(),
+  z.object({ ...requestIdentity, operation: z.literal("mcp.stop"), payload: z.object({ connectionId: z.uuid() }).strict() }).strict(),
+  z.object({ ...requestIdentity, operation: z.literal("mcp.setEnabled"), payload: z.object({ connectionId: z.uuid(), enabled: z.boolean() }).strict() }).strict(),
+  z.object({ ...requestIdentity, operation: z.literal("mcp.remove"), payload: z.object({ connectionId: z.uuid() }).strict() }).strict(),
+  z.object({ ...requestIdentity, operation: z.literal("mcp.readResource"), payload: z.object({ connectionId: z.uuid(), uri: z.string().min(1).max(4096) }).strict() }).strict(),
+  z.object({ ...requestIdentity, operation: z.literal("mcp.getPrompt"), payload: z.object({ connectionId: z.uuid(), name: z.string().min(1).max(500), arguments: z.record(z.string(), z.string()).default({}) }).strict() }).strict(),
+  z.object({ ...requestIdentity, operation: z.literal("mcp.prepareTool"), payload: z.object({ connectionId: z.uuid(), name: z.string().min(1).max(500), arguments: z.record(z.string(), z.unknown()).default({}) }).strict() }).strict(),
+  z.object({ ...requestIdentity, operation: z.literal("mcp.approveTool"), payload: z.object({ actionId: z.uuid() }).strict() }).strict(),
+  z.object({ ...requestIdentity, operation: z.literal("planner.list"), payload: z.object({}).strict() }).strict(),
+  z.object({ ...requestIdentity, operation: z.literal("planner.task.add"), payload: z.object({ title: z.string().trim().min(1).max(500), dueDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(), optional: z.boolean().optional() }).strict() }).strict(),
+  z.object({ ...requestIdentity, operation: z.literal("planner.task.update"), payload: z.object({ taskId: z.uuid(), title: z.string().trim().min(1).max(500).optional(), dueDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(), optional: z.boolean().optional(), completed: z.boolean().optional() }).strict() }).strict(),
+  z.object({ ...requestIdentity, operation: z.literal("planner.task.remove"), payload: z.object({ taskId: z.uuid() }).strict() }).strict(),
+  z.object({
+    ...requestIdentity, operation: z.literal("planner.generateLocal"), payload: z.object({
+      date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), timezone: z.string().min(1).max(200), availability: z.object({ start: z.string(), end: z.string() }).strict().nullable().optional(),
+      events: z.array(z.object({ sourceId: z.string().min(1).max(500), title: z.string().min(1).max(1000), start: z.iso.datetime(), end: z.iso.datetime(), allDay: z.boolean().optional(), recurringId: z.string().max(500).optional() }).strict()).max(500).optional(), unavailableSources: z.array(z.string().min(1).max(500)).max(100).optional(),
+      sources: planningSources,
+    }).strict(),
+  }).strict(),
+  z.object({ ...requestIdentity, operation: z.literal("planner.save"), payload: z.object({ planId: z.uuid(), markdown: z.string().max(2_000_000), expectedRevision: z.string().length(64) }).strict() }).strict(),
+  z.object({ ...requestIdentity, operation: z.literal("planner.prepareManual"), payload: z.object({ date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), timezone: z.string().min(1).max(200), availability: z.object({ start: z.string(), end: z.string() }).strict().nullable().optional(), events: z.array(z.object({ sourceId: z.string().min(1).max(500), title: z.string().min(1).max(1000), start: z.iso.datetime(), end: z.iso.datetime(), allDay: z.boolean().optional(), recurringId: z.string().max(500).optional() }).strict()).max(500).optional(), unavailableSources: z.array(z.string().min(1).max(500)).max(100).optional(), sources: planningSources }).strict() }).strict(),
+  z.object({ ...requestIdentity, operation: z.literal("planner.generateAutomatic"), payload: z.object({ date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), timezone: z.string().min(1).max(200), model: z.string().trim().min(1).max(200), availability: z.object({ start: z.string(), end: z.string() }).strict().nullable().optional(), events: z.array(z.object({ sourceId: z.string().min(1).max(500), title: z.string().min(1).max(1000), start: z.iso.datetime(), end: z.iso.datetime(), allDay: z.boolean().optional(), recurringId: z.string().max(500).optional() }).strict()).max(500).optional(), unavailableSources: z.array(z.string().min(1).max(500)).max(100).optional(), sources: planningSources }).strict() }).strict(),
+  z.object({ ...requestIdentity, operation: z.literal("schedule.create"), payload: z.object({ name: z.string().trim().min(1).max(120), mode: z.enum(["manual", "automatic"]), routineId: z.uuid().nullable().optional(), model: z.string().max(200).nullable().optional(), objective: z.string().trim().min(1).max(100_000), localTime: z.string().regex(/^(?:[01]\d|2[0-3]):[0-5]\d$/), timezone: z.string().min(1).max(200), missedPolicy: z.enum(["skip", "run-once", "review"]), enabled: z.boolean().optional() }).strict() }).strict(),
+  z.object({ ...requestIdentity, operation: z.literal("schedule.update"), payload: z.object({ scheduleId: z.uuid(), name: z.string().trim().min(1).max(120), mode: z.enum(["manual", "automatic"]), routineId: z.uuid().nullable().optional(), model: z.string().max(200).nullable().optional(), objective: z.string().trim().min(1).max(100_000), localTime: z.string().regex(/^(?:[01]\d|2[0-3]):[0-5]\d$/), timezone: z.string().min(1).max(200), missedPolicy: z.enum(["skip", "run-once", "review"]) }).strict() }).strict(),
+  z.object({ ...requestIdentity, operation: z.literal("schedule.setEnabled"), payload: z.object({ scheduleId: z.uuid(), enabled: z.boolean() }).strict() }).strict(),
+  z.object({ ...requestIdentity, operation: z.literal("schedule.remove"), payload: z.object({ scheduleId: z.uuid() }).strict() }).strict(),
+  z.object({ ...requestIdentity, operation: z.literal("schedule.tick"), payload: z.object({ now: z.iso.datetime().optional() }).strict() }).strict(),
 ]);
 
 export type ServiceRequest = z.infer<typeof serviceRequestSchema>;
@@ -295,6 +336,8 @@ export const errorCodeSchema = z.enum([
   "KNOWLEDGE_BASE_BUSY",
   "HANDOFF_STATE_CONFLICT",
   "AGENT_STATE_CONFLICT",
+  "MCP_STATE_CONFLICT",
+  "SCHEDULE_STATE_CONFLICT",
 ]);
 
 export type ErrorCode = z.infer<typeof errorCodeSchema>;
@@ -343,6 +386,12 @@ export const IPC_CHANNELS = {
   serviceState: "voidra:service:state",
   chooseDirectory: "voidra:shell:choose-directory",
   copyText: "voidra:shell:copy-text",
+  openRouterCredentialStatus: "voidra:secrets:openrouter-status",
+  setOpenRouterCredential: "voidra:secrets:set-openrouter",
+  deleteOpenRouterCredential: "voidra:secrets:delete-openrouter",
+  mcpCredentialStatus: "voidra:secrets:mcp-status",
+  setMcpCredential: "voidra:secrets:set-mcp",
+  deleteMcpCredential: "voidra:secrets:delete-mcp",
   testCrash: "voidra:test:service-crash",
   isolationProbe: "voidra:test:isolation-probe",
   testReadClipboard: "voidra:test:read-clipboard",

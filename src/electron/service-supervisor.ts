@@ -21,6 +21,7 @@ export class ServiceSupervisor extends EventEmitter {
   readonly #lifecycle = new ServiceLifecycle();
   readonly #pending = new Map<string, PendingRequest>();
   readonly #restartTimes: number[] = [];
+  readonly #credentials = new Map<string, string | null>();
   #child: ChildProcess | null = null;
   #stopping = false;
 
@@ -70,6 +71,7 @@ export class ServiceSupervisor extends EventEmitter {
           clearTimeout(startupTimeout);
           if (!settled) {
             settled = true;
+            for (const [provider, value] of this.#credentials) child.send({ kind: "credential.update", provider, value });
             this.#emitState(this.#lifecycle.transition("ready"));
             resolve();
           }
@@ -155,6 +157,11 @@ export class ServiceSupervisor extends EventEmitter {
 
   debugCrash() {
     this.#child?.kill("SIGKILL");
+  }
+
+  setCredential(provider: string, value: string | null) {
+    this.#credentials.set(provider, value);
+    if (this.#child?.connected) this.#child.send({ kind: "credential.update", provider, value });
   }
 
   #resolveResponse(response: ServiceResponse) {

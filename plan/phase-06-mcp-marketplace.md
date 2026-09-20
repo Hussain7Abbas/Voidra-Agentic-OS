@@ -2,6 +2,8 @@
 
 [Plan index](main.md) · Previous: [P05](phase-05-openrouter-agent-runtime.md) · Next: [P07](phase-07-day-planning-scheduling.md)
 
+Implementation status: completed on 2026-09-20. The official Registry, stdio, and Streamable HTTP flows have fixture-backed protocol evidence; a live calendar/email/task connector remains pending Q04 and is not represented as tested.
+
 ## Outcome and prerequisites
 
 Users discover integrations, add custom local or remote MCP servers, configure workspace-specific accounts, inspect capabilities, and use them through the task runtime.

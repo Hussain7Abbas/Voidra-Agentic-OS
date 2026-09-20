@@ -20,6 +20,8 @@ export function HandoffPanel({ workspaceId, request }: { workspaceId: string; re
   const [client, setClient] = useState<"claude" | "codex">("claude");
   const [preferredModel, setPreferredModel] = useState("use current client model");
   const [outputDirectory, setOutputDirectory] = useState("outputs");
+  const [routineInstructions, setRoutineInstructions] = useState("");
+  const [editingRoutineId, setEditingRoutineId] = useState("");
   const [objective, setObjective] = useState("Prepare today's focused plan.");
   const [targetPath, setTargetPath] = useState("");
   const [sourceQuery, setSourceQuery] = useState("");
@@ -66,9 +68,9 @@ export function HandoffPanel({ workspaceId, request }: { workspaceId: string; re
   };
 
   const createRoutine = async () => {
-    const result = await request("routine.create", { name: routineName, skillId, client, preferredModel, outputDirectory, inlineInstructions: "" }, workspaceId);
-    setMessage(result.ok ? "Routine created." : result.error.message);
-    if (result.ok) { setSelectedRoutineId(result.data.id as string); await load(); }
+    const result = await request(editingRoutineId ? "routine.update" : "routine.create", { ...(editingRoutineId ? { routineId: editingRoutineId } : {}), name: routineName, skillId, client, preferredModel, outputDirectory, inlineInstructions: routineInstructions }, workspaceId);
+    setMessage(result.ok ? `Routine ${editingRoutineId ? "updated" : "created"}.` : result.error.message);
+    if (result.ok) { setSelectedRoutineId(result.data.id as string); setEditingRoutineId(""); await load(); }
   };
 
   const searchSources = async () => {
@@ -151,8 +153,9 @@ export function HandoffPanel({ workspaceId, request }: { workspaceId: string; re
       <label>Subscription client<select aria-label="Subscription client" value={client} onChange={(event) => setClient(event.target.value as "claude" | "codex")}><option value="claude">Claude</option><option value="codex">Codex</option></select></label>
       <label>Preferred model<input aria-label="Preferred model" value={preferredModel} onChange={(event) => setPreferredModel(event.target.value)} /></label>
       <label>Granted output directory<input aria-label="Output directory" value={outputDirectory} onChange={(event) => setOutputDirectory(event.target.value)} /></label>
-      <button onClick={createRoutine} disabled={!skillId}>Create routine</button>
-      <div aria-label="Saved routines" className="compact-list">{routines.map((routine) => <div key={routine.id}><button className="list-choice" onClick={() => setSelectedRoutineId(routine.id)}><strong>{routine.name}</strong><small>{routine.client} · {routine.preferredModel} · skill v{routine.skillVersion}</small></button><button onClick={async () => { await request("routine.duplicate", { routineId: routine.id, name: `${routine.name} for ${routine.client === "claude" ? "Codex" : "Claude"}`, client: routine.client === "claude" ? "codex" : "claude", preferredModel: "use current client model" }, workspaceId); await load(); }}>Duplicate for other client</button></div>)}</div>
+      <label>Routine instructions<textarea aria-label="Routine instructions" value={routineInstructions} onChange={(event) => setRoutineInstructions(event.target.value)} /></label>
+      <div className="button-row"><button onClick={createRoutine} disabled={!skillId}>{editingRoutineId ? "Update routine" : "Create routine"}</button>{editingRoutineId && <button onClick={() => setEditingRoutineId("")}>Cancel edit</button>}</div>
+      <div aria-label="Saved routines" className="compact-list">{routines.map((routine) => <div key={routine.id}><button className="list-choice" onClick={() => setSelectedRoutineId(routine.id)}><strong>{routine.name}</strong><small>{routine.client} · {routine.preferredModel} · skill v{routine.skillVersion}</small></button><button onClick={() => { setEditingRoutineId(routine.id); setRoutineName(routine.name); setSkillId(routine.skillId); setClient(routine.client); setPreferredModel(routine.preferredModel); setOutputDirectory(routine.outputDirectory); setRoutineInstructions(routine.inlineInstructions); }}>Edit routine</button><button onClick={async () => { await request("routine.duplicate", { routineId: routine.id, name: `${routine.name} for ${routine.client === "claude" ? "Codex" : "Claude"}`, client: routine.client === "claude" ? "codex" : "claude", preferredModel: "use current client model" }, workspaceId); await load(); }}>Duplicate for other client</button></div>)}</div>
     </article>
 
     <article className="panel handoff-card handoff-compile">

@@ -26,8 +26,8 @@ function sse(response: import("node:http").ServerResponse, events: unknown[]) {
   response.end("data: [DONE]\n\n");
 }
 
-async function launch(profile: string, workspace: string, baseUrl: string, extraEnv: Record<string, string> = {}) {
-  return electron.launch({ args: [process.cwd()], env: { ...process.env, VOIDRA_E2E: "1", VOIDRA_USER_DATA_DIR: profile, VOIDRA_TEST_FOLDER_RESULTS: JSON.stringify([workspace]), VOIDRA_OPENROUTER_BASE_URL: baseUrl, VOIDRA_OPENROUTER_TEST_KEY: "fixture-key", ...extraEnv } });
+async function launch(profile: string, workspace: string | string[], baseUrl: string, extraEnv: Record<string, string> = {}) {
+  return electron.launch({ args: [process.cwd()], env: { ...process.env, VOIDRA_E2E: "1", VOIDRA_USER_DATA_DIR: profile, VOIDRA_TEST_FOLDER_RESULTS: JSON.stringify(Array.isArray(workspace) ? workspace : [workspace]), VOIDRA_OPENROUTER_BASE_URL: baseUrl, VOIDRA_OPENROUTER_TEST_KEY: "fixture-key", ...extraEnv } });
 }
 
 async function onboard(window: Page) {
@@ -73,6 +73,32 @@ test("streams through an OpenRouter-shaped fixture, approves one exact write, an
   await expect(window.getByLabel("Agent grants")).toContainText("outputs/agent.md");
 });
 
+test("stores the OpenRouter credential through secure main-process storage without exposing it", async () => {
+  const baseUrl = await fixture((_body, response) => sse(response, [{ model: "fixture/model", choices: [{ delta: { content: "credential accepted" }, finish_reason: "stop" }] }]));
+  const root = join(temporaryRoot, "Work");
+  const profile = join(temporaryRoot, "profile");
+  const secret = "sk-or-v1-fixture-secret-123456789";
+  await mkdir(root);
+  application = await launch(profile, root, baseUrl, { VOIDRA_OPENROUTER_TEST_KEY: "" });
+  const window = await application.firstWindow();
+  await onboard(window);
+  await window.getByRole("link", { name: "Settings" }).click();
+  await expect(window.getByTestId("openrouter-credential-status")).toHaveText("Not configured");
+  await window.getByLabel("OpenRouter API key").fill(secret);
+  await window.getByRole("button", { name: "Save credential" }).click();
+  await expect(window.getByTestId("openrouter-credential-status")).toHaveText("Configured");
+  await expect(window.getByLabel("OpenRouter API key")).toHaveValue("");
+  expect((await readFile(join(profile, "secrets", "openrouter.bin"))).toString("utf8")).not.toContain(secret);
+  await window.getByRole("link", { name: "Assistant" }).click();
+  await window.getByLabel("Automatic task model").fill("fixture/model");
+  await window.getByRole("button", { name: "Run automatic task" }).click();
+  await expect(window.getByLabel("Automatic tasks")).toContainText("completed");
+  expect(await readFile(join(root, ".voidra", "agent-runtime.json"), "utf8")).not.toContain(secret);
+  await window.getByRole("link", { name: "Settings" }).click();
+  await window.getByRole("button", { name: "Remove credential" }).click();
+  await expect(window.getByTestId("openrouter-credential-status")).toHaveText("Not configured");
+});
+
 test("revoked grant blocks the next effect and another workspace cannot see it", async () => {
   let calls = 0;
   const baseUrl = await fixture((_body, response) => {
@@ -116,6 +142,20 @@ test("cancels a live stream and records a cancelled terminal state", async () =>
   await expect(window.getByLabel("Task event journal")).toContainText("task.cancelled");
 });
 
+test("cancels a pending tool review without performing the write", async () => {
+  const baseUrl = await fixture((_body, response) => sse(response, [{ model: "fixture/model", choices: [{ delta: { tool_calls: [{ index: 0, id: "pending-write", function: { name: "write_file", arguments: '{"path":"must-not-exist.md","content":"blocked"}' } }] }, finish_reason: "tool_calls" }] }]));
+  const root = join(temporaryRoot, "Work");
+  await mkdir(root);
+  application = await launch(join(temporaryRoot, "profile"), root, baseUrl);
+  const window = await application.firstWindow();
+  await onboard(window);
+  await window.getByRole("button", { name: "Run automatic task" }).click();
+  await expect(window.getByLabel("Automatic tasks")).toContainText("awaiting-approval");
+  await window.getByRole("button", { name: "Stop task" }).click();
+  await expect(window.getByLabel("Automatic tasks")).toContainText("cancelled");
+  await expect(readFile(join(root, "must-not-exist.md"), "utf8")).rejects.toMatchObject({ code: "ENOENT" });
+});
+
 test("restart after a committed write records an uncertain interruption and never replays it", async () => {
   let calls = 0;
   const baseUrl = await fixture((_body, response) => {
@@ -142,4 +182,97 @@ test("restart after a committed write records an uncertain interruption and neve
   await new Promise((resolve) => setTimeout(resolve, 500));
   expect(calls).toBe(3);
   expect(await readFile(join(root, "effect.md"), "utf8")).toBe("effect-3");
+});
+
+test("resumes a provider-only interruption after restart without permitting uncertain effects", async () => {
+  let calls = 0;
+  const baseUrl = await fixture((_body, response) => {
+    calls += 1;
+    if (calls === 1) {
+      response.writeHead(200, { "Content-Type": "text/event-stream" });
+      response.write(`data: ${JSON.stringify({ model: "fixture/model", choices: [{ delta: { content: "before restart" } }] })}\n\n`);
+      return;
+    }
+    sse(response, [{ model: "fixture/model", choices: [{ delta: { content: " resumed safely" }, finish_reason: "stop" }] }]);
+  });
+  const root = join(temporaryRoot, "Work");
+  await mkdir(root);
+  application = await launch(join(temporaryRoot, "profile"), root, baseUrl);
+  const window = await application.firstWindow();
+  await onboard(window);
+  await window.getByRole("button", { name: "Run automatic task" }).click();
+  await expect(window.getByLabel("Automatic task output")).toContainText("before restart");
+  await window.evaluate(() => globalThis.window.voidra!.diagnostics!.simulateServiceCrash());
+  await expect(window.locator(".runtime-card")).toContainText("ready", { timeout: 8_000 });
+  await expect(window.getByLabel("Automatic tasks")).toContainText("interrupted", { timeout: 8_000 });
+  await window.getByLabel("Automatic tasks").getByRole("button").filter({ hasText: "interrupted" }).click();
+  await window.getByRole("button", { name: "Resume safely" }).click();
+  await expect(window.getByLabel("Automatic tasks")).toContainText("completed");
+  await expect(window.getByLabel("Automatic task output")).toContainText("resumed safely");
+  expect(calls).toBe(2);
+});
+
+test("keeps a running Work task owned by Work while the visible workspace switches", async () => {
+  const baseUrl = await fixture((_body, response) => {
+    response.writeHead(200, { "Content-Type": "text/event-stream" });
+    response.write(`data: ${JSON.stringify({ model: "fixture/slow", choices: [{ delta: { content: "work-only-stream" } }] })}\n\n`);
+    const timer = setInterval(() => response.write(": keepalive\n\n"), 200);
+    response.on("close", () => clearInterval(timer));
+  });
+  const work = join(temporaryRoot, "Work");
+  const personal = join(temporaryRoot, "Personal");
+  await Promise.all([mkdir(work), mkdir(personal)]);
+  application = await launch(join(temporaryRoot, "profile"), [work, personal], baseUrl);
+  const window = await application.firstWindow();
+  await onboard(window);
+  await window.getByRole("button", { name: "Add workspace" }).click();
+  await window.getByLabel("Workspace name").fill("Personal");
+  await window.getByRole("button", { name: "Choose workspace folder" }).click();
+  await window.getByRole("button", { name: "Create workspace" }).click();
+  await window.getByLabel("Current workspace").selectOption({ label: "Work" });
+  await window.getByRole("link", { name: "Assistant" }).click();
+  await window.getByLabel("Automatic task model").fill("fixture/slow");
+  await window.getByRole("button", { name: "Run automatic task" }).click();
+  await expect(window.getByLabel("Automatic task output")).toContainText("work-only-stream");
+  await window.getByLabel("Current workspace").selectOption({ label: "Personal" });
+  await expect(window.getByLabel("Automatic tasks")).not.toContainText("work-only-stream");
+  await expect(window.getByLabel("Automatic tasks").getByRole("button")).toHaveCount(0);
+  await window.getByLabel("Current workspace").selectOption({ label: "Work" });
+  await expect(window.getByLabel("Automatic task output")).toContainText("work-only-stream");
+  await window.getByRole("button", { name: "Stop task" }).click();
+  await expect(window.getByLabel("Automatic tasks")).toContainText("cancelled");
+});
+
+test("re-resolves selected context and fails closed after a shared base is detached mid-task", async () => {
+  let calls = 0;
+  const baseUrl = await fixture((body, response) => {
+    calls += 1;
+    expect(JSON.stringify(body)).toContain("revoked-context-token");
+    sse(response, [{ model: "fixture/model", choices: [{ delta: { tool_calls: [{ index: 0, id: "read-1", function: { name: "read_file", arguments: '{"path":"input.md"}' } }] }, finish_reason: "tool_calls" }] }]);
+  });
+  const work = join(temporaryRoot, "Work");
+  const shared = join(temporaryRoot, "Shared");
+  await Promise.all([mkdir(work), mkdir(shared)]);
+  await import("node:fs/promises").then(({ writeFile }) => Promise.all([writeFile(join(work, "input.md"), "local input"), writeFile(join(shared, "Context.md"), "# Context\n\nrevoked-context-token") ]));
+  application = await launch(join(temporaryRoot, "profile"), [work, shared], baseUrl);
+  const window = await application.firstWindow();
+  await onboard(window);
+  await window.getByRole("link", { name: "Settings" }).click();
+  await window.getByLabel("Shared base name").fill("Shared");
+  await window.getByRole("button", { name: "Choose shared knowledge folder" }).click();
+  await window.getByRole("button", { name: "Attach base" }).click();
+  await window.getByRole("link", { name: "Assistant" }).click();
+  await window.getByLabel("Automatic task source query").fill("revoked-context-token");
+  await window.getByRole("button", { name: "Find context" }).click();
+  await window.getByLabel("Automatic task context sources").getByRole("button", { name: /Shared \/ Context.md/ }).click();
+  await window.getByRole("button", { name: "Run automatic task" }).click();
+  await expect(window.getByLabel("Automatic tasks")).toContainText("awaiting-approval");
+  await window.getByRole("link", { name: "Settings" }).click();
+  await window.locator(".attachment-list").getByRole("button", { name: "Detach" }).click();
+  await window.getByRole("link", { name: "Assistant" }).click();
+  await window.getByLabel("Automatic tasks").getByRole("button").filter({ hasText: "awaiting-approval" }).click();
+  await window.getByRole("button", { name: "Approve exact action" }).click();
+  await expect(window.getByLabel("Automatic tasks")).toContainText("failed");
+  await expect(window.getByLabel("Automatic task output")).toContainText("not attached");
+  expect(calls).toBe(1);
 });

@@ -14,6 +14,8 @@ export default defineConfig({
         "src/service/handoffs.ts",
         "src/service/openrouter.ts",
         "src/service/agents.ts",
+        "src/service/mcp.ts",
+        "src/service/planner.ts",
         "src/service/notes.ts",
         "src/shared/sequenced-events.ts",
         "src/shared/service-lifecycle.ts",
