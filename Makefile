@@ -3,7 +3,7 @@
 	dev dev-web start \
 	build build-web build-desktop \
 	typecheck test test-watch coverage e2e verify audit ci \
-	package package-dir smoke release open-package \
+	package package-dir release-manifest smoke release open-package \
 	clean clean-all
 
 ROOT := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
@@ -48,6 +48,7 @@ help:
 	@echo ""
 	@echo "$(BLUE)Packaging ($(RESET)Apple Silicon development build$(BLUE))$(RESET)"
 	@echo "  $(GREEN)package$(RESET)              Create $(YELLOW)release/mac-arm64/Voidra.app$(RESET)"
+	@echo "  $(GREEN)release-manifest$(RESET)     Hash the package and record build/schema inputs"
 	@echo "  $(GREEN)smoke$(RESET)                Smoke-test the existing packaged application"
 	@echo "  $(GREEN)release$(RESET)              Package, then smoke-test the resulting application"
 	@echo "  $(GREEN)open-package$(RESET)         Open the existing packaged application on macOS"
@@ -107,10 +108,16 @@ ci: require-pnpm
 	@cd "$(ROOT)" && $(PNPM) test:coverage
 	@cd "$(ROOT)" && $(PNPM) test:e2e
 	@cd "$(ROOT)" && $(PNPM) package:dir
+	@cd "$(ROOT)" && $(PNPM) release:manifest
 	@cd "$(ROOT)" && $(PNPM) smoke:package
 
 package package-dir: require-pnpm
 	@cd "$(ROOT)" && $(PNPM) package:dir
+	@cd "$(ROOT)" && $(PNPM) release:manifest
+
+release-manifest: require-pnpm
+	@test -x "$(PACKAGED_APP)/Contents/MacOS/Voidra" || (echo "$(YELLOW)Package missing. Run make package first.$(RESET)" && exit 1)
+	@cd "$(ROOT)" && $(PNPM) release:manifest
 
 smoke: require-pnpm
 	@test -x "$(PACKAGED_APP)/Contents/MacOS/Voidra" || (echo "$(YELLOW)Package missing. Run make package first.$(RESET)" && exit 1)

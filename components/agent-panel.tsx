@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { RequestService } from "@/components/service-types";
 
 type Tool = { id: string; name: string; argumentsText: string; state: string };
@@ -21,10 +21,13 @@ export function AgentPanel({ workspaceId, request }: { workspaceId: string; requ
   const [grants, setGrants] = useState<Grant[]>([]);
   const [selectedId, setSelectedId] = useState("");
   const [message, setMessage] = useState("");
+  const workspaceRef = useRef(workspaceId);
+  workspaceRef.current = workspaceId;
   const selected = tasks.find(({ id }) => id === selectedId) ?? tasks[0] ?? null;
 
   const load = useCallback(async () => {
     const result = await request("agent.list", {}, workspaceId);
+    if (workspaceRef.current !== workspaceId) return;
     if (!result.ok) { setMessage(result.error.message); return; }
     setTasks((result.data.tasks as Task[]) ?? []);
     setGrants((result.data.grants as Grant[]) ?? []);
@@ -66,7 +69,7 @@ export function AgentPanel({ workspaceId, request }: { workspaceId: string; requ
     </article>
     <article className="panel agent-card agent-history">
       <p className="card-label">TASK HISTORY</p>
-      <div className="agent-history-layout"><div className="compact-list" aria-label="Automatic tasks">{tasks.map((task) => <button className="list-choice" key={task.id} onClick={() => setSelectedId(task.id)}><strong>{task.status} · {task.objective}</strong><small>{task.model} · step {task.step}/{task.maxSteps} · {task.usage.totalTokens} tokens · {(task.runtimeMs / 1000).toFixed(1)}s/{task.maxRuntimeMs / 1000}s</small></button>)}</div>{selected && <div className="agent-inspector"><div className="button-row">{!["completed", "failed", "cancelled", "interrupted"].includes(selected.status) && <button onClick={async () => { await request("agent.cancel", { taskId: selected.id }, workspaceId); await load(); }}>Stop task</button>}{selected.status === "awaiting-approval" && <button className="primary" onClick={async () => { await request("agent.approve", { taskId: selected.id }, workspaceId); await load(); }}>Approve exact action</button>}{selected.status === "interrupted" && !selected.pendingTool && <button onClick={async () => { const result = await request("agent.resume", { taskId: selected.id }, workspaceId); setMessage(result.ok ? "Task resumed." : result.error.message); await load(); }}>Resume safely</button>}</div>{selected.pendingTool && <pre aria-label="Pending tool action">{selected.pendingTool.name}\n{selected.pendingTool.argumentsText}</pre>}<pre aria-label="Automatic task output">{selected.output || selected.error || "Waiting for provider output…"}</pre><ol aria-label="Task event journal">{selected.events.slice(-30).map((event) => <li key={event.sequence}><strong>{event.type}</strong> <small>{JSON.stringify(event.data)}</small></li>)}</ol></div>}</div>
+      <div className="agent-history-layout"><div className="compact-list" aria-label="Automatic tasks">{tasks.map((task) => <button className="list-choice" key={task.id} onClick={() => setSelectedId(task.id)}><strong>{task.status} · {task.objective}</strong><small>{task.id} · {task.model} · step {task.step}/{task.maxSteps} · {task.usage.totalTokens} tokens · {(task.runtimeMs / 1000).toFixed(1)}s/{task.maxRuntimeMs / 1000}s</small></button>)}</div>{selected && <div className="agent-inspector"><div className="button-row">{!["completed", "failed", "cancelled", "interrupted"].includes(selected.status) && <button onClick={async () => { await request("agent.cancel", { taskId: selected.id }, workspaceId); await load(); }}>Stop task</button>}{selected.status === "awaiting-approval" && <button className="primary" onClick={async () => { await request("agent.approve", { taskId: selected.id }, workspaceId); await load(); }}>Approve exact action</button>}{selected.status === "interrupted" && !selected.pendingTool && <button onClick={async () => { const result = await request("agent.resume", { taskId: selected.id }, workspaceId); setMessage(result.ok ? "Task resumed." : result.error.message); await load(); }}>Resume safely</button>}</div>{selected.pendingTool && <pre aria-label="Pending tool action">{selected.pendingTool.name}\n{selected.pendingTool.argumentsText}</pre>}<pre aria-label="Automatic task output">{selected.output || selected.error || "Waiting for provider output…"}</pre><ol aria-label="Task event journal">{selected.events.slice(-30).map((event) => <li key={event.sequence}><strong>{event.type}</strong> <small>{JSON.stringify(event.data)}</small></li>)}</ol></div>}</div>
     </article>
     {message && <p className="save-message" role="status">{message}</p>}
   </section>;

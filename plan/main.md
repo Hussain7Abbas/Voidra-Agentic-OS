@@ -1,6 +1,6 @@
 # Voidra implementation plan
 
-Status: P00–P06 completed on 2026-09-20. P07 automated implementation is complete; live Q04 connector and physical sleep/notification acceptance remain pending, and P08 is next for implementation. The 14 refinement questions below remain pending. Existing confirmed requirements remain authoritative; provisional defaults used for implementation are not user answers.
+Status: P00–P06 are complete. P07–P12 automated implementation and the Apple Silicon release-candidate gate completed on 2026-09-20; live/native/audio/network/signing acceptance remains pending where recorded. The 14 refinement questions below remain pending. Existing confirmed requirements remain authoritative; provisional defaults used for implementation are not user answers.
 
 ## Purpose and source of truth
 

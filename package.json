@@ -23,6 +23,7 @@
     "test:coverage": "vitest run --coverage",
     "test:e2e": "pnpm build && playwright test",
     "package:dir": "pnpm build && electron-builder --dir --arm64",
+    "release:manifest": "node scripts/release-manifest.mjs",
     "smoke:package": "node scripts/smoke-package.mjs",
     "verify": "pnpm typecheck && pnpm test && pnpm test:e2e"
   },
@@ -80,6 +81,9 @@
     ],
     "mac": {
       "category": "public.app-category.productivity",
+      "extendInfo": {
+        "NSMicrophoneUsageDescription": "Voidra uses the microphone only when you start a voice interaction."
+      },
       "target": [
         {
           "target": "dir",

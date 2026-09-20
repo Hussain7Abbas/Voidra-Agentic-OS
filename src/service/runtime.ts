@@ -1,4 +1,6 @@
 import { realpath, stat } from "node:fs/promises";
+import { join } from "node:path";
+import { randomUUID } from "node:crypto";
 import { serviceRequestSchema, publicError, type ServiceEvent, type ServiceRequest, type ServiceResponse } from "../shared/contracts";
 import { z } from "zod";
 import type { ServiceDatabase } from "./database";
@@ -11,6 +13,12 @@ import { McpManager } from "./mcp";
 import { PlannerScheduler } from "./planner";
 import { NoteCoordinator } from "./notes";
 import { DomainError, WorkspaceManager } from "./workspaces";
+import { AutomationManager } from "./automation";
+import { VoiceManager } from "./voice";
+import { RemoteManager } from "./remote";
+import { RemoteGateway } from "./remote-gateway";
+import { BackupManager } from "./backup";
+import { isTestRuntime } from "../domain/runtime-mode";
 
 export class ServiceRuntime {
   #openRouterKey = process.env.VOIDRA_OPENROUTER_TEST_KEY ?? process.env.OPENROUTER_API_KEY ?? null;
@@ -23,20 +31,32 @@ export class ServiceRuntime {
   readonly #agents: AgentTaskManager;
   readonly #mcp: McpManager;
   readonly #planner: PlannerScheduler;
+  readonly #automation: AutomationManager;
+  readonly #voice: VoiceManager;
+  readonly #remote: RemoteManager;
+  readonly #remoteGateway: RemoteGateway;
+  readonly #backups: BackupManager;
   readonly #schedulerTimer: NodeJS.Timeout;
 
-  constructor(private readonly database: ServiceDatabase, emitEvent: (event: Omit<ServiceEvent, "sequence">) => void = () => undefined) {
+  constructor(private readonly database: ServiceDatabase, emitEvent: (event: Omit<ServiceEvent, "sequence">) => void = () => undefined, hostCall?: (operation: "browser.assign" | "browser.list" | "browser.action" | "native.status" | "native.action" | "native.takeover", workspaceId: string, taskId: string, payload: Record<string, unknown>) => Promise<unknown>) {
     this.#workspaces = new WorkspaceManager(database);
+    this.#backups = new BackupManager(database, this.#workspaces);
     this.#knowledge = new KnowledgeManager(database, this.#notes);
     this.#handoffs = new ManualHandoffManager(this.#workspaces, this.#instructions, this.#knowledge);
     this.#mcp = new McpManager(database, fetch, (connectionId) => this.#credentials.get(`mcp:${connectionId}`) ?? null, process.env.VOIDRA_MCP_REGISTRY_URL);
+    this.#automation = new AutomationManager(hostCall ? (operation, workspaceId, actionId, payload) => hostCall(operation, workspaceId, actionId, payload) : undefined);
     this.#agents = new AgentTaskManager(new OpenRouterAdapter({
       baseUrl: process.env.VOIDRA_OPENROUTER_BASE_URL,
       apiKey: () => this.#openRouterKey,
     }), {
-      afterToolEffect: process.env.VOIDRA_E2E_AGENT_POST_EFFECT_DELAY_MS ? async () => { await new Promise((resolve) => setTimeout(resolve, Number(process.env.VOIDRA_E2E_AGENT_POST_EFFECT_DELAY_MS))); } : undefined,
+      afterToolEffect: isTestRuntime() && process.env.VOIDRA_E2E_AGENT_POST_EFFECT_DELAY_MS ? async () => { await new Promise((resolve) => setTimeout(resolve, Number(process.env.VOIDRA_E2E_AGENT_POST_EFFECT_DELAY_MS))); } : undefined,
       listMcpTools: (workspace) => this.#mcp.agentTools(workspace),
       callMcpTool: (workspace, connectionId, name, args) => this.#mcp.callForAgent(workspace, connectionId, name, args),
+      assignBrowserTab: hostCall ? (workspace, tabId, taskId) => hostCall("browser.assign", workspace.id, taskId, { tabId }) : undefined,
+      listBrowserTabs: hostCall ? (workspace, taskId) => hostCall("browser.list", workspace.id, taskId, {}) as Promise<Array<{ id: string; url: string; title: string; documentId: string }>> : undefined,
+      callBrowserAction: hostCall ? (workspace, taskId, payload) => hostCall("browser.action", workspace.id, taskId, payload) as Promise<Record<string, unknown>> : undefined,
+      listAutomation: (workspace) => this.#automation.agentCapabilities(workspace),
+      callAutomationAction: (workspace, payload) => this.#automation.executeForAgent(workspace, payload) as Promise<Record<string, unknown>>,
       buildContext: async (workspace, input) => {
         const settings = await this.#workspaces.getSettings(workspace.id);
         const rules = input.targetPaths.length ? await this.#instructions.resolve(workspace.canonicalPath, input.targetPaths) : [];
@@ -57,6 +77,16 @@ export class ServiceRuntime {
       },
     });
     this.#planner = new PlannerScheduler(this.#handoffs, this.#agents, this.#knowledge, (workspaceId, payload) => emitEvent({ type: "schedule.occurrence", workspaceId, payload }));
+    this.#voice = new VoiceManager(this.#workspaces, this.#agents, () => this.#credentials.get("elevenlabs") ?? null);
+    this.#remote = new RemoteManager(database, this.#workspaces, this.#agents, {
+      listRoutines: async (workspace) => await this.#handoffs.listRoutines(workspace) as Array<Record<string, unknown>>,
+      compileManual: async (workspace, input) => await this.#handoffs.compile(workspace, { ...input, targetPaths: [], sources: [] }) as Record<string, unknown>,
+      runVoice: async (workspace, input) => { const session = await this.#voice.start(workspace, "push-to-talk"); return await this.#voice.finalize(workspace, { sessionId: session.id, utteranceId: randomUUID(), transcriptId: randomUUID(), text: input.text, model: input.model }) as Record<string, unknown>; },
+      voicePlayed: (workspace, sessionId, utteranceId) => this.#voice.played(workspace, sessionId, utteranceId),
+      interruptVoice: (workspace, sessionId, cancelTask) => this.#voice.interrupt(workspace, sessionId, cancelTask),
+    });
+    this.#remoteGateway = new RemoteGateway(this.#remote);
+    void this.#remoteGateway.start().catch((error) => this.#remote.setGateway({ enabled: false, url: null, secure: false, reason: error instanceof Error ? error.message : "Remote gateway failed to start." }));
     this.#schedulerTimer = setInterval(() => { void this.#planner.tick(this.database.listWorkspaces()).catch(() => undefined); }, 30_000);
     this.#schedulerTimer.unref();
     void this.#planner.tick(this.database.listWorkspaces()).catch(() => undefined);
@@ -65,6 +95,7 @@ export class ServiceRuntime {
   async close() {
     clearInterval(this.#schedulerTimer);
     await this.#mcp.close();
+    await this.#remoteGateway.close();
     this.#notes.close();
   }
 
@@ -223,6 +254,44 @@ export class ServiceRuntime {
       if (request.operation === "agent.stopAll") return { requestId: request.requestId, ok: true, data: await this.#agents.stopAll() };
       if (request.operation === "agent.revokeGrant") return { requestId: request.requestId, ok: true, data: await this.#agents.revoke(workspace, request.payload.grantId) };
     }
+    if (request.operation.startsWith("automation.")) {
+      const workspace = await this.#workspaces.requireAvailableWorkspace(request.workspaceId);
+      if (request.operation === "automation.list") return { requestId: request.requestId, ok: true, data: await this.#automation.list(workspace) };
+      if (request.operation === "automation.addRoot") return { requestId: request.requestId, ok: true, data: await this.#automation.addRoot(workspace, request.payload.name, request.payload.path) };
+      if (request.operation === "automation.removeRoot") return { requestId: request.requestId, ok: true, data: await this.#automation.removeRoot(workspace, request.payload.rootId) };
+      if (request.operation === "automation.listFiles") return { requestId: request.requestId, ok: true, data: await this.#automation.listFiles(workspace, request.payload.rootId, request.payload.path) };
+      if (request.operation === "automation.prepareFile") return { requestId: request.requestId, ok: true, data: await this.#automation.prepareFile(workspace, request.payload) };
+      if (request.operation === "automation.approveFile") return { requestId: request.requestId, ok: true, data: await this.#automation.approveFile(workspace, request.payload.actionId) };
+      if (request.operation === "automation.undoFile") return { requestId: request.requestId, ok: true, data: await this.#automation.undoFile(workspace, request.payload.actionId) };
+      if (request.operation === "automation.capabilities") return { requestId: request.requestId, ok: true, data: await this.#automation.capabilities(workspace) as Record<string, unknown> };
+      if (request.operation === "automation.prepareNative") return { requestId: request.requestId, ok: true, data: await this.#automation.prepareNative(workspace, request.payload.operation, request.payload.target) };
+      if (request.operation === "automation.approveNative") return { requestId: request.requestId, ok: true, data: await this.#automation.approveNative(workspace, request.payload.actionId) };
+      if (request.operation === "automation.takeover") return { requestId: request.requestId, ok: true, data: await this.#automation.takeover(workspace) as Record<string, unknown> };
+    }
+    if (request.operation.startsWith("voice.")) {
+      const workspace = await this.#workspaces.requireAvailableWorkspace(request.workspaceId);
+      if (request.operation === "voice.list") return { requestId: request.requestId, ok: true, data: await this.#voice.list(workspace) };
+      if (request.operation === "voice.configure") return { requestId: request.requestId, ok: true, data: await this.#voice.configure(workspace, request.payload) };
+      if (request.operation === "voice.start") return { requestId: request.requestId, ok: true, data: await this.#voice.start(workspace, request.payload.mode) };
+      if (request.operation === "voice.partial") return { requestId: request.requestId, ok: true, data: await this.#voice.partial(workspace, request.payload) };
+      if (request.operation === "voice.transcribe") return { requestId: request.requestId, ok: true, data: await this.#voice.transcribe(workspace, request.payload) };
+      if (request.operation === "voice.finalize") return { requestId: request.requestId, ok: true, data: await this.#voice.finalize(workspace, request.payload) };
+      if (request.operation === "voice.interrupt") return { requestId: request.requestId, ok: true, data: await this.#voice.interrupt(workspace, request.payload.sessionId, request.payload.cancelTask) };
+      if (request.operation === "voice.played") return { requestId: request.requestId, ok: true, data: await this.#voice.played(workspace, request.payload.sessionId, request.payload.utteranceId) };
+      if (request.operation === "voice.wake") return { requestId: request.requestId, ok: true, data: await this.#voice.wake(workspace, request.payload.phrase) };
+    }
+    if (request.operation.startsWith("remote.")) {
+      if (request.operation === "remote.status") return { requestId: request.requestId, ok: true, data: this.#remote.status() };
+      if (request.operation === "remote.createChallenge") return { requestId: request.requestId, ok: true, data: await this.#remote.createChallenge(request.payload.name, request.payload.workspaceIds) };
+      if (request.operation === "remote.revoke") return { requestId: request.requestId, ok: true, data: this.#remote.revoke(request.payload.deviceId) };
+      if (request.operation === "remote.setAvailabilityFixture") { if (!isTestRuntime()) throw new DomainError("REMOTE_CONFLICT", "Availability fixtures are disabled outside E2E."); return { requestId: request.requestId, ok: true, data: this.#remote.setAvailable(request.payload.available) }; }
+    }
+    if (request.operation.startsWith("backup.")) {
+      if (request.operation === "backup.inspect") return { requestId: request.requestId, ok: true, data: await this.#backups.inspect(request.payload.backupPath) };
+      if (request.operation === "backup.restore") return { requestId: request.requestId, ok: true, data: await this.#backups.restore(request.payload.backupPath, join(request.payload.destinationParent, request.payload.folderName)) };
+      const workspace = await this.#workspaces.requireAvailableWorkspace(request.workspaceId);
+      if (request.operation === "backup.export") return { requestId: request.requestId, ok: true, data: await this.#backups.export(workspace, request.payload.destinationDirectory) };
+    }
     if (request.operation.startsWith("mcp.")) {
       const workspace = await this.#workspaces.requireAvailableWorkspace(request.workspaceId);
       if (request.operation === "mcp.catalog") return { requestId: request.requestId, ok: true, data: await this.#mcp.catalog(request.payload.query) };
@@ -256,7 +325,7 @@ export class ServiceRuntime {
       if (request.operation === "schedule.setEnabled") return { requestId: request.requestId, ok: true, data: await this.#planner.setScheduleEnabled(workspace, request.payload.scheduleId, request.payload.enabled) };
       if (request.operation === "schedule.remove") return { requestId: request.requestId, ok: true, data: await this.#planner.removeSchedule(workspace, request.payload.scheduleId) };
       if (request.operation === "schedule.tick") {
-        const now = process.env.VOIDRA_E2E === "1" && request.payload.now ? new Date(request.payload.now) : new Date();
+        const now = isTestRuntime() && request.payload.now ? new Date(request.payload.now) : new Date();
         return { requestId: request.requestId, ok: true, data: { occurrences: await this.#planner.tick(this.database.listWorkspaces(), now) } };
       }
     }

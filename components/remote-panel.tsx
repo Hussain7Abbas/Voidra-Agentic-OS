@@ -1,0 +1,19 @@
+"use client";
+
+import { useCallback, useEffect, useState } from "react";
+import type { RequestService } from "@/components/service-types";
+
+type Device = { id: string; name: string; workspaceIds: string[]; createdAt: string; lastSeenAt: string; revokedAt: string | null };
+type RemoteState = { enabled: boolean; url: string | null; secure: boolean; reason: string | null; available: boolean; devices: Device[]; pendingChallenges: Array<{ id: string; name: string; workspaceIds: string[]; expiresAt: string }> };
+
+export function RemotePanel({ workspaceId, workspaceName, request }: { workspaceId: string; workspaceName: string; request: RequestService }) {
+  const [state, setState] = useState<RemoteState | null>(null); const [deviceName, setDeviceName] = useState("My phone"); const [challenge, setChallenge] = useState<{ code: string; expiresAt: string } | null>(null); const [message, setMessage] = useState("");
+  const load = useCallback(async () => { const result = await request("remote.status", {}, workspaceId); if (result.ok) setState(result.data as RemoteState); else setMessage(result.error.message); }, [request, workspaceId]);
+  useEffect(() => { void load(); const timer = window.setInterval(() => void load(), 2_000); return () => window.clearInterval(timer); }, [load]);
+  return <section className="remote-grid">
+    <article className="panel remote-card"><p className="card-label">AWAKE-MAC GATEWAY</p><h2>{state?.enabled ? "Companion ready" : "Remote access disabled"}</h2><dl><div><dt>Transport</dt><dd>{state?.secure ? "TLS" : state?.enabled ? "Loopback test only" : "Not listening"}</dd></div><div><dt>Host</dt><dd>{state?.available ? "Awake and available" : "Unavailable"}</dd></div></dl>{state?.url && <a className="remote-link" href={state.url} target="_blank" rel="noreferrer">Open companion</a>}<small>{state?.reason ?? "Requests execute on this Mac and are never queued while it is unavailable."}</small></article>
+    <article className="panel remote-card"><p className="card-label">PAIR DEVICE</p><small>This Mac pre-authorizes only <strong>{workspaceName}</strong>. The six-digit challenge expires after five minutes and can be claimed once.</small><label>Device name<input aria-label="Remote device name" value={deviceName} onChange={(event) => setDeviceName(event.target.value)} /></label><button className="primary" disabled={!deviceName.trim() || !state?.enabled} onClick={async () => { const result = await request("remote.createChallenge", { name: deviceName, workspaceIds: [workspaceId] }, workspaceId); if (!result.ok) setMessage(result.error.message); else { setChallenge(result.data as { code: string; expiresAt: string }); setMessage("Pairing challenge created on this Mac."); await load(); } }}>Create pairing code</button>{challenge && <div className="pairing-code"><strong data-testid="pairing-code">{challenge.code}</strong><small>Expires {new Date(challenge.expiresAt).toLocaleTimeString()}</small></div>}</article>
+    <article className="panel remote-card remote-devices"><p className="card-label">PAIRED DEVICES</p><div className="compact-list">{state?.devices.filter(({ revokedAt }) => !revokedAt).length ? state.devices.filter(({ revokedAt }) => !revokedAt).map((device) => <div key={device.id}><span><strong>{device.name}</strong><small>{device.workspaceIds.includes(workspaceId) ? `Authorized for ${workspaceName}` : "Other workspace only"} · last seen {new Date(device.lastSeenAt).toLocaleString()}</small></span><button className="danger-button" onClick={async () => { const result = await request("remote.revoke", { deviceId: device.id }, workspaceId); setMessage(result.ok ? "Device revoked immediately." : result.error.message); await load(); }}>Revoke</button></div>) : <small>No active paired devices.</small>}</div></article>
+    {message && <p className="save-message" role="status">{message}</p>}
+  </section>;
+}

@@ -12,6 +12,10 @@ import { AgentPanel } from "@/components/agent-panel";
 import { McpPanel } from "@/components/mcp-panel";
 import { PlannerPanel } from "@/components/planner-panel";
 import { SchedulePanel } from "@/components/schedule-panel";
+import { BrowserPanel } from "@/components/browser-panel";
+import { AutomationPanel } from "@/components/automation-panel";
+import { VoicePanel } from "@/components/voice-panel";
+import { RemotePanel } from "@/components/remote-panel";
 
 const FALLBACK_WORKSPACE_ID = "018f0f73-89db-7a63-a1b2-5d46f598ed01";
 
@@ -38,7 +42,9 @@ const navigation: Array<{ id: SectionId; label: string; symbol: string }> = [
   { id: "notes", label: "Notes", symbol: "◇" },
   { id: "graph", label: "Graph", symbol: "⌘" },
   { id: "browser", label: "Browser", symbol: "◎" },
+  { id: "mac", label: "Mac", symbol: "⌁" },
   { id: "jobs", label: "Jobs", symbol: "↻" },
+  { id: "remote", label: "Remote", symbol: "⌁" },
   { id: "settings", label: "Settings", symbol: "⚙" },
 ];
 
@@ -48,7 +54,9 @@ const copy: Record<SectionId, { eyebrow: string; title: string; body: string }> 
   notes: { eyebrow: "Private knowledge", title: "Notes", body: "Canonical Markdown, backlinks, revision recovery, and local indexing stay inside this workspace." },
   graph: { eyebrow: "Accessible knowledge", title: "Knowledge graph", body: "Private notes and explicitly attached bases retain visible source and access boundaries." },
   browser: { eyebrow: "Workspace session", title: "Browser", body: "Ordinary tabs, agent-controlled tabs, and isolated artifact previews will use separate security boundaries." },
+  mac: { eyebrow: "Shared device", title: "Mac control", body: "Scoped file actions and serialized desktop control remain visible, reviewable, and interruptible." },
   jobs: { eyebrow: "Awake-Mac runtime", title: "Jobs", body: "Manual and automatic routines remain bound to their workspace, timezone, and awake-only schedule." },
+  remote: { eyebrow: "Paired companion", title: "Remote access", body: "Authorized devices can reach selected workspaces only while this Mac is awake and connected." },
   settings: { eyebrow: "Global and workspace", title: "Settings", body: "Workspace overrides show their effective value and origin without merging private context." },
 };
 
@@ -82,9 +90,11 @@ function WorkspaceDialog({
   onComplete: () => Promise<void>;
   onClose: () => void;
 }) {
-  const [mode, setMode] = useState<"create" | "open">("create");
+  const [mode, setMode] = useState<"create" | "open" | "restore">("create");
   const [name, setName] = useState("");
   const [path, setPath] = useState("");
+  const [backupPath, setBackupPath] = useState("");
+  const [restoreParent, setRestoreParent] = useState("");
   const [message, setMessage] = useState(required ? "Choose a folder to create your first workspace." : "Choose an independent workspace folder.");
   const [busy, setBusy] = useState(false);
 
@@ -98,10 +108,20 @@ function WorkspaceDialog({
     setMessage(result.path ?? "Folder selected.");
   };
 
+  const chooseRestoreFolder = async (kind: "backup" | "parent") => {
+    const result = await window.voidra?.shell.chooseDirectory();
+    if (!result || result.canceled || !result.path) { setMessage("Folder selection canceled."); return; }
+    if (kind === "backup") setBackupPath(result.path);
+    else setRestoreParent(result.path);
+    setMessage(result.path);
+  };
+
   const submit = async () => {
-    if (!path || (mode === "create" && !name.trim())) return;
+    if ((mode !== "restore" && !path) || ((mode === "create" || mode === "restore") && !name.trim()) || (mode === "restore" && (!backupPath || !restoreParent))) return;
     setBusy(true);
-    const result = await request(mode === "create" ? "workspace.create" : "workspace.open", mode === "create" ? { name: name.trim(), path } : { path });
+    const result = mode === "restore"
+      ? await request("backup.restore", { backupPath, destinationParent: restoreParent, folderName: name.trim() })
+      : await request(mode === "create" ? "workspace.create" : "workspace.open", mode === "create" ? { name: name.trim(), path } : { path });
     setBusy(false);
     if (!result.ok) {
       setMessage(result.error.message);
@@ -121,11 +141,17 @@ function WorkspaceDialog({
         <div className="segmented" aria-label="Workspace action">
           <button className={mode === "create" ? "selected" : ""} onClick={() => setMode("create")}>Create new</button>
           <button className={mode === "open" ? "selected" : ""} onClick={() => setMode("open")}>Open existing</button>
+          <button className={mode === "restore" ? "selected" : ""} onClick={() => setMode("restore")}>Restore backup</button>
         </div>
-        {mode === "create" && <label>Workspace name<input aria-label="Workspace name" value={name} onChange={(event) => setName(event.target.value)} placeholder="Work" autoFocus /></label>}
-        <button className="folder-picker" onClick={chooseFolder}>Choose workspace folder</button>
+        {(mode === "create" || mode === "restore") && <label>{mode === "restore" ? "Restored folder name" : "Workspace name"}<input aria-label={mode === "restore" ? "Restored folder name" : "Workspace name"} value={name} onChange={(event) => setName(event.target.value)} placeholder="Work" autoFocus /></label>}
+        {mode === "restore" ? <>
+          <button className="folder-picker" onClick={() => void chooseRestoreFolder("backup")}>Choose .voidra-backup folder</button>
+          <small>{backupPath || "No backup selected."}</small>
+          <button className="folder-picker" onClick={() => void chooseRestoreFolder("parent")}>Choose restore parent folder</button>
+          <small>{restoreParent || "No restore destination selected."}</small>
+        </> : <button className="folder-picker" onClick={chooseFolder}>Choose workspace folder</button>}
         <p className="path-message" data-testid="workspace-folder-result">{message}</p>
-        <button className="primary" onClick={submit} disabled={busy || !path || (mode === "create" && !name.trim())}>{busy ? "Saving…" : mode === "create" ? "Create workspace" : "Open workspace"}</button>
+        <button className="primary" onClick={submit} disabled={busy || (mode !== "restore" && !path) || ((mode === "create" || mode === "restore") && !name.trim()) || (mode === "restore" && (!backupPath || !restoreParent))}>{busy ? "Saving…" : mode === "create" ? "Create workspace" : mode === "open" ? "Open workspace" : "Verify and restore"}</button>
       </section>
     </div>
   );
@@ -136,12 +162,15 @@ function SettingsPanel({ workspace, registry, request, reloadRegistry }: { works
   const [globalModel, setGlobalModel] = useState("");
   const [globalPersona, setGlobalPersona] = useState("");
   const [globalVoice, setGlobalVoice] = useState(false);
+  const [globalVoiceId, setGlobalVoiceId] = useState("");
   const [workspaceModelEnabled, setWorkspaceModelEnabled] = useState(false);
   const [workspaceModel, setWorkspaceModel] = useState("");
   const [workspacePersonaEnabled, setWorkspacePersonaEnabled] = useState(false);
   const [workspacePersona, setWorkspacePersona] = useState("");
   const [workspaceVoiceEnabled, setWorkspaceVoiceEnabled] = useState(false);
   const [workspaceVoice, setWorkspaceVoice] = useState(false);
+  const [workspaceVoiceIdEnabled, setWorkspaceVoiceIdEnabled] = useState(false);
+  const [workspaceVoiceId, setWorkspaceVoiceId] = useState("");
   const [scopeDirectory, setScopeDirectory] = useState("");
   const [scopeContent, setScopeContent] = useState("");
   const [resolveTarget, setResolveTarget] = useState("");
@@ -154,6 +183,9 @@ function SettingsPanel({ workspace, registry, request, reloadRegistry }: { works
   const [baseAccess, setBaseAccess] = useState<"read" | "write">("read");
   const [openRouterKey, setOpenRouterKey] = useState("");
   const [openRouterStatus, setOpenRouterStatus] = useState<{ configured: boolean; secureStorageAvailable: boolean } | null>(null);
+  const [elevenLabsKey, setElevenLabsKey] = useState("");
+  const [elevenLabsStatus, setElevenLabsStatus] = useState<{ configured: boolean; secureStorageAvailable: boolean } | null>(null);
+  const [backupBusy, setBackupBusy] = useState(false);
 
   const load = useCallback(async () => {
     const result = await request("settings.get", {}, workspace.id);
@@ -163,12 +195,15 @@ function SettingsPanel({ workspace, registry, request, reloadRegistry }: { works
     setGlobalModel(data.global.execution?.preferredModel ?? "");
     setGlobalPersona(data.global.assistant?.persona ?? "");
     setGlobalVoice(data.global.voice?.enabled ?? false);
+    setGlobalVoiceId(data.global.voice?.voiceId ?? "");
     setWorkspaceModelEnabled(data.workspace.execution?.preferredModel !== undefined);
     setWorkspaceModel(data.workspace.execution?.preferredModel ?? data.effective.execution.preferredModel);
     setWorkspacePersonaEnabled(data.workspace.assistant?.persona !== undefined);
     setWorkspacePersona(data.workspace.assistant?.persona ?? data.effective.assistant.persona);
     setWorkspaceVoiceEnabled(data.workspace.voice?.enabled !== undefined);
     setWorkspaceVoice(data.workspace.voice?.enabled ?? data.effective.voice.enabled);
+    setWorkspaceVoiceIdEnabled(data.workspace.voice?.voiceId !== undefined);
+    setWorkspaceVoiceId(data.workspace.voice?.voiceId ?? data.effective.voice.voiceId ?? "");
   }, [request, workspace.id]);
 
   useEffect(() => { void load(); }, [load]);
@@ -181,6 +216,7 @@ function SettingsPanel({ workspace, registry, request, reloadRegistry }: { works
 
   useEffect(() => { void loadAttachments(); }, [loadAttachments]);
   useEffect(() => { void window.voidra?.secrets.openRouterStatus().then(setOpenRouterStatus); }, []);
+  useEffect(() => { void window.voidra?.secrets.elevenLabsStatus().then(setElevenLabsStatus); }, []);
 
   const chooseBaseFolder = async () => {
     const result = await window.voidra?.shell.chooseDirectory();
@@ -200,7 +236,7 @@ function SettingsPanel({ workspace, registry, request, reloadRegistry }: { works
     const overrides = {
       ...settings?.global,
       execution: { ...settings?.global.execution, preferredModel: globalModel },
-      voice: { ...settings?.global.voice, enabled: globalVoice },
+      voice: { ...settings?.global.voice, enabled: globalVoice, voiceId: globalVoiceId.trim() || null },
       assistant: { ...settings?.global.assistant, persona: globalPersona },
     };
     const result = await request("settings.updateGlobal", { overrides }, workspace.id);
@@ -221,6 +257,8 @@ function SettingsPanel({ workspace, registry, request, reloadRegistry }: { works
     overrides.voice = { ...(overrides.voice ?? {}) };
     if (workspaceVoiceEnabled) overrides.voice.enabled = workspaceVoice;
     else delete overrides.voice.enabled;
+    if (workspaceVoiceIdEnabled) overrides.voice.voiceId = workspaceVoiceId.trim() || null;
+    else delete overrides.voice.voiceId;
     if (!Object.keys(overrides.voice).length) delete overrides.voice;
     const result = await request("settings.updateWorkspace", { overrides }, workspace.id);
     setMessage(result.ok ? `${workspace.name} overrides saved.` : result.error.message);
@@ -247,6 +285,7 @@ function SettingsPanel({ workspace, registry, request, reloadRegistry }: { works
         <p className="card-label">GLOBAL DEFAULTS</p>
         <label>Preferred model<input aria-label="Global preferred model" value={globalModel} onChange={(event) => setGlobalModel(event.target.value)} /></label>
         <label className="check-label"><input type="checkbox" aria-label="Global voice enabled" checked={globalVoice} onChange={(event) => setGlobalVoice(event.target.checked)} /> Voice enabled</label>
+        <label>ElevenLabs voice ID<input aria-label="Global ElevenLabs voice ID" value={globalVoiceId} onChange={(event) => setGlobalVoiceId(event.target.value)} placeholder="Voice ID" /></label>
         <label>Base persona<textarea aria-label="Global persona" value={globalPersona} onChange={(event) => setGlobalPersona(event.target.value)} /></label>
         <button onClick={saveGlobal}>Save global defaults</button>
       </article>
@@ -258,6 +297,9 @@ function SettingsPanel({ workspace, registry, request, reloadRegistry }: { works
         <small>Effective: <strong data-testid="effective-model">{settings.effective.execution.preferredModel}</strong> · {settings.origins.execution.preferredModel}</small>
         <label className="check-label"><input type="checkbox" aria-label="Override workspace voice" checked={workspaceVoiceEnabled} onChange={(event) => setWorkspaceVoiceEnabled(event.target.checked)} /> Override voice enabled</label>
         <label className="check-label nested"><input type="checkbox" aria-label="Workspace voice value" checked={workspaceVoice} onChange={(event) => setWorkspaceVoice(event.target.checked)} disabled={!workspaceVoiceEnabled} /> Enabled</label>
+        <label className="check-label"><input type="checkbox" aria-label="Use workspace-specific voice ID" checked={workspaceVoiceIdEnabled} onChange={(event) => setWorkspaceVoiceIdEnabled(event.target.checked)} /> Override voice ID</label>
+        <input aria-label="Workspace ElevenLabs voice ID" value={workspaceVoiceId} onChange={(event) => setWorkspaceVoiceId(event.target.value)} disabled={!workspaceVoiceIdEnabled} />
+        <small>Effective voice ID: <strong data-testid="effective-voice-id">{settings.effective.voice.voiceId ?? "Not selected"}</strong> · {settings.origins.voice.voiceId}</small>
         <label className="check-label"><input type="checkbox" aria-label="Override workspace persona" checked={workspacePersonaEnabled} onChange={(event) => setWorkspacePersonaEnabled(event.target.checked)} /> Override persona</label>
         <textarea aria-label="Workspace persona" value={workspacePersona} onChange={(event) => setWorkspacePersona(event.target.value)} disabled={!workspacePersonaEnabled} />
         <button onClick={saveWorkspace}>Save workspace overrides</button>
@@ -270,6 +312,20 @@ function SettingsPanel({ workspace, registry, request, reloadRegistry }: { works
         <button onClick={async () => { await request("workspace.setPreferences", { defaultWorkspaceId: workspace.id }, workspace.id); await reloadRegistry(); }}>Make default workspace</button>
         <small>{registry.defaultWorkspaceId === workspace.id ? "This is the default workspace." : "Another workspace is the default."}</small>
         <button className="danger-button" onClick={async () => { if (!window.confirm(`Remove ${workspace.name} from Voidra? Source files will not be deleted.`)) return; await request("workspace.remove", { workspaceId: workspace.id }, workspace.id); await reloadRegistry(); }}>Remove from Voidra</button>
+      </article>
+
+      <article className="panel settings-card">
+        <p className="card-label">BACKUP & RECOVERY</p>
+        <small>Exports canonical workspace files and durable state with integrity hashes. Search indexes and credentials are excluded; shared sources remain external references.</small>
+        <button disabled={backupBusy} onClick={async () => {
+          const selection = await window.voidra?.shell.chooseDirectory();
+          if (!selection?.path) return;
+          setBackupBusy(true);
+          const result = await request("backup.export", { destinationDirectory: selection.path }, workspace.id);
+          setBackupBusy(false);
+          setMessage(result.ok ? `Backup created at ${String(result.data.path)}` : result.error.message);
+        }}>{backupBusy ? "Creating verified backup…" : "Export workspace backup"}</button>
+        <small>Restore from the Add workspace dialog. Credentials must be reauthorized after restore.</small>
       </article>
 
       <article className="panel settings-card">
@@ -297,6 +353,13 @@ function SettingsPanel({ workspace, registry, request, reloadRegistry }: { works
         <label>API key<input aria-label="OpenRouter API key" type="password" autoComplete="off" value={openRouterKey} onChange={(event) => setOpenRouterKey(event.target.value)} placeholder={openRouterStatus?.configured ? "Configured — enter a replacement" : "sk-or-…"} /></label>
         <div className="button-row"><button disabled={!openRouterKey || !openRouterStatus?.secureStorageAvailable} onClick={async () => { try { const status = await window.voidra?.secrets.setOpenRouter(openRouterKey); setOpenRouterKey(""); if (status) setOpenRouterStatus({ ...status, secureStorageAvailable: true }); setMessage("OpenRouter credential stored securely."); } catch { setMessage("OpenRouter credential could not be stored securely."); } }}>Save credential</button>{openRouterStatus?.configured && <button className="danger-button" onClick={async () => { const status = await window.voidra?.secrets.deleteOpenRouter(); if (status) setOpenRouterStatus({ ...status, secureStorageAvailable: openRouterStatus.secureStorageAvailable }); setMessage("OpenRouter credential removed."); }}>Remove credential</button>}</div>
         <small data-testid="openrouter-credential-status">{openRouterStatus?.configured ? "Configured" : openRouterStatus?.secureStorageAvailable ? "Not configured" : "Secure storage unavailable"}</small>
+      </article>
+      <article className="panel settings-card">
+        <p className="card-label">ELEVENLABS CREDENTIAL</p>
+        <small>The key is encrypted through macOS secure storage and supplied only to the local speech adapter.</small>
+        <label>API key<input aria-label="ElevenLabs API key" type="password" autoComplete="off" value={elevenLabsKey} onChange={(event) => setElevenLabsKey(event.target.value)} placeholder={elevenLabsStatus?.configured ? "Configured — enter a replacement" : "ElevenLabs API key"} /></label>
+        <div className="button-row"><button disabled={!elevenLabsKey || !elevenLabsStatus?.secureStorageAvailable} onClick={async () => { try { const status = await window.voidra?.secrets.setElevenLabs(elevenLabsKey); setElevenLabsKey(""); if (status) setElevenLabsStatus({ ...status, secureStorageAvailable: true }); setMessage("ElevenLabs credential stored securely."); } catch { setMessage("ElevenLabs credential could not be stored securely."); } }}>Save ElevenLabs credential</button>{elevenLabsStatus?.configured && <button className="danger-button" onClick={async () => { const status = await window.voidra?.secrets.deleteElevenLabs(); if (status) setElevenLabsStatus({ ...status, secureStorageAvailable: elevenLabsStatus.secureStorageAvailable }); setMessage("ElevenLabs credential removed."); }}>Remove ElevenLabs credential</button>}</div>
+        <small data-testid="elevenlabs-credential-status">{elevenLabsStatus?.configured ? "Configured" : elevenLabsStatus?.secureStorageAvailable ? "Not configured" : "Secure storage unavailable"}</small>
       </article>
       <McpPanel workspaceId={workspace.id} request={request} />
       {message && <p className="save-message" role="status">{message}</p>}
@@ -449,9 +512,15 @@ export function Shell({ section }: { section: SectionId }) {
           ) : section === "graph" && selectedWorkspace ? (
             <KnowledgePanel workspaceId={selectedWorkspace.id} request={request} />
           ) : section === "assistant" && selectedWorkspace ? (
-            <div className="assistant-stack"><AgentPanel workspaceId={selectedWorkspace.id} request={request} /><MemoryPanel workspaceId={selectedWorkspace.id} request={request} /></div>
+            <div className="assistant-stack"><VoicePanel workspaceId={selectedWorkspace.id} request={request} /><AgentPanel workspaceId={selectedWorkspace.id} request={request} /><MemoryPanel workspaceId={selectedWorkspace.id} request={request} /></div>
           ) : section === "jobs" && selectedWorkspace ? (
             <div className="assistant-stack"><SchedulePanel workspaceId={selectedWorkspace.id} request={request} /><HandoffPanel workspaceId={selectedWorkspace.id} request={request} /></div>
+          ) : section === "browser" && selectedWorkspace ? (
+            <BrowserPanel workspace={selectedWorkspace} request={request} />
+          ) : section === "mac" && selectedWorkspace ? (
+            <AutomationPanel workspaceId={selectedWorkspace.id} request={request} />
+          ) : section === "remote" && selectedWorkspace ? (
+            <RemotePanel workspaceId={selectedWorkspace.id} workspaceName={selectedWorkspace.name} request={request} />
           ) : (
             <div className="grid">
               <article className="hero-card"><div className="orb" aria-hidden="true"><span /></div><div><p className="card-label">{selectedWorkspace ? "WORKSPACE CONTEXT" : "DESKTOP SHELL"}</p><h2>{selectedWorkspace ? selectedWorkspace.name : "Choose your workspace."}</h2><p>{selectedWorkspace ? selectedWorkspace.canonicalPath : "Voidra keeps each assistant context in a directory you choose."}</p><button className="primary" onClick={ping} disabled={!bridgeAvailable || serviceStatus !== "ready"}>Check runtime</button></div></article>

@@ -9,6 +9,10 @@ export function registerAppScheme() {
       scheme: "app",
       privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: false },
     },
+    {
+      scheme: "voidra-artifact",
+      privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: false },
+    },
   ]);
 }
 

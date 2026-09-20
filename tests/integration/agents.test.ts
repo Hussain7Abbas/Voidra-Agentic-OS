@@ -14,7 +14,7 @@ function response(lines: unknown[]) {
   return new Response(body, { status: 200, headers: { "Content-Type": "text/event-stream" } });
 }
 
-function tool(name: "read_file" | "write_file" | "mcp_call", args: Record<string, unknown>) {
+function tool(name: "read_file" | "write_file" | "mcp_call" | "browser_action" | "file_action" | "native_action", args: Record<string, unknown>) {
   return response([{ model: "fixture/model", choices: [{ delta: { tool_calls: [{ index: 0, id: "tool-1", function: { name, arguments: JSON.stringify(args) } }] }, finish_reason: "tool_calls" }] }]);
 }
 
@@ -22,7 +22,7 @@ function complete(text = "Completed") {
   return response([{ model: "fixture/model", choices: [{ delta: { content: text }, finish_reason: "stop" }], usage: { prompt_tokens: 4, completion_tokens: 2, total_tokens: 6 } }]);
 }
 
-async function fixture(fetchImpl: typeof fetch, key = "fixture-key") {
+async function fixture(fetchImpl: typeof fetch, key = "fixture-key", options: ConstructorParameters<typeof AgentTaskManager>[1] = {}) {
   const directory = await mkdtemp(join(tmpdir(), "voidra-agents-"));
   temporaryDirectories.push(directory);
   const database = new ServiceDatabase(join(directory, "state.sqlite"));
@@ -32,7 +32,7 @@ async function fixture(fetchImpl: typeof fetch, key = "fixture-key") {
   await Promise.all([mkdir(workRoot), mkdir(personalRoot)]);
   const work = await workspaces.create("Work", workRoot);
   const personal = await workspaces.create("Personal", personalRoot);
-  const manager = new AgentTaskManager(new OpenRouterAdapter({ baseUrl: "http://fixture", apiKey: () => key || null, fetch: fetchImpl }));
+  const manager = new AgentTaskManager(new OpenRouterAdapter({ baseUrl: "http://fixture", apiKey: () => key || null, fetch: fetchImpl }), options);
   return { directory, database, work, personal, manager };
 }
 
@@ -84,6 +84,20 @@ describe("AgentTaskManager", () => {
     expect((await manager.list(personal)).grants).toEqual([]);
     expect((await manager.list(work)).tasks).toEqual([expect.objectContaining({ workspaceId: work.id, status: "completed" })]);
     database.close();
+  });
+
+  it("assigns and executes an observed browser action and interrupts an uncertain submission", async () => {
+    const tabId = crypto.randomUUID(); const documentId = crypto.randomUUID(); const assignBrowserTab = vi.fn(); const callBrowserAction = vi.fn().mockResolvedValueOnce({ documentId, text: "page" }).mockResolvedValueOnce({ documentId, uncertain: true });
+    const fetchImpl = vi.fn().mockResolvedValueOnce(tool("browser_action", { tabId, documentId, action: "read" })).mockResolvedValueOnce(complete("read done")).mockResolvedValueOnce(tool("browser_action", { tabId, documentId, action: "click", selector: "form button" }));
+    const { database, work, manager } = await fixture(fetchImpl as typeof fetch, "fixture-key", { assignBrowserTab, listBrowserTabs: async (_workspace, taskId) => [{ id: tabId, url: "https://fixture", title: taskId, documentId }], callBrowserAction });
+    const first = await manager.start(work, { objective: "Read tab", model: "fixture/model", maxSteps: 3, browserTabId: tabId }); expect(assignBrowserTab).toHaveBeenCalledWith(work, tabId, first.id); expect(first.status).toBe("awaiting-approval"); expect((await manager.approve(work, first.id)).status).toBe("completed"); await manager.revoke(work, (await manager.list(work)).grants[0]!.id);
+    const second = await manager.start(work, { objective: "Submit", model: "fixture/model", maxSteps: 2 }); expect(second.status).toBe("awaiting-approval"); const interrupted = await manager.approve(work, second.id); expect(interrupted).toMatchObject({ status: "interrupted", error: expect.stringContaining("uncertain"), pendingTool: { state: "uncertain" } }); database.close();
+  });
+
+  it("runs reviewed file automation and records denied native automation", async () => {
+    const rootId = crypto.randomUUID(); const callAutomationAction = vi.fn().mockResolvedValueOnce({ state: "completed", result: { moved: true } }).mockResolvedValueOnce({ state: "failed", error: "Accessibility permission is denied." }); const listAutomation = async () => ({ roots: [{ id: rootId, name: "Files", path: "/fixture" }], native: { accessibility: "denied" } });
+    const fetchImpl = vi.fn().mockResolvedValueOnce(tool("file_action", { rootId, action: "move", source: "a", destination: "b" })).mockResolvedValueOnce(complete("moved")).mockResolvedValueOnce(tool("native_action", { operation: "activate-control", target: { appId: "fixture" } }));
+    const { database, work, manager } = await fixture(fetchImpl as typeof fetch, "fixture-key", { listAutomation, callAutomationAction }); const fileTask = await manager.start(work, { objective: "Move", model: "fixture/model", maxSteps: 3 }); expect(fileTask.status).toBe("awaiting-approval"); expect((await manager.approve(work, fileTask.id)).status).toBe("completed"); const nativeTask = await manager.start(work, { objective: "Activate", model: "fixture/model", maxSteps: 2 }); expect(nativeTask.status).toBe("awaiting-approval"); expect(await manager.approve(work, nativeTask.id)).toMatchObject({ status: "interrupted", error: "Accessibility permission is denied.", pendingTool: { state: "denied" } }); database.close();
   });
 
   it("rejects traversal after approval and records a failed task without an effect", async () => {

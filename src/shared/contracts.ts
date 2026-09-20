@@ -274,12 +274,43 @@ export const serviceRequestSchema = z.discriminatedUnion("operation", [
   z.object({ ...requestIdentity, operation: z.literal("handoff.complete"), payload: z.object({ runId: z.uuid() }).strict() }).strict(),
   z.object({ ...requestIdentity, operation: z.literal("handoff.cancel"), payload: z.object({ runId: z.uuid() }).strict() }).strict(),
   z.object({ ...requestIdentity, operation: z.literal("agent.list"), payload: z.object({}).strict() }).strict(),
-  z.object({ ...requestIdentity, operation: z.literal("agent.start"), payload: z.object({ objective: z.string().trim().min(1).max(100_000), model: z.string().trim().min(1).max(200), maxSteps: z.number().int().min(1).max(25).default(8), maxTokens: z.number().int().min(1).max(10_000_000).default(50_000), maxRuntimeMs: z.number().int().min(1_000).max(3_600_000).default(300_000), targetPaths: z.array(z.string().min(1).max(2048)).max(50).default([]), sources: z.array(z.object({ baseId: z.union([z.literal("private"), z.uuid()]), documentId: z.string().min(1).max(128) }).strict()).max(100).default([]) }).strict() }).strict(),
+  z.object({ ...requestIdentity, operation: z.literal("agent.start"), payload: z.object({ objective: z.string().trim().min(1).max(100_000), model: z.string().trim().min(1).max(200), maxSteps: z.number().int().min(1).max(25).default(8), maxTokens: z.number().int().min(1).max(10_000_000).default(50_000), maxRuntimeMs: z.number().int().min(1_000).max(3_600_000).default(300_000), targetPaths: z.array(z.string().min(1).max(2048)).max(50).default([]), sources: z.array(z.object({ baseId: z.union([z.literal("private"), z.uuid()]), documentId: z.string().min(1).max(128) }).strict()).max(100).default([]), browserTabId: z.uuid().optional() }).strict() }).strict(),
   z.object({ ...requestIdentity, operation: z.literal("agent.approve"), payload: z.object({ taskId: z.uuid(), expiresAt: z.iso.datetime().nullable().optional() }).strict() }).strict(),
   z.object({ ...requestIdentity, operation: z.literal("agent.cancel"), payload: z.object({ taskId: z.uuid() }).strict() }).strict(),
   z.object({ ...requestIdentity, operation: z.literal("agent.resume"), payload: z.object({ taskId: z.uuid() }).strict() }).strict(),
   z.object({ ...requestIdentity, operation: z.literal("agent.stopAll"), payload: z.object({}).strict() }).strict(),
   z.object({ ...requestIdentity, operation: z.literal("agent.revokeGrant"), payload: z.object({ grantId: z.uuid() }).strict() }).strict(),
+  z.object({ ...requestIdentity, operation: z.literal("automation.list"), payload: z.object({}).strict() }).strict(),
+  z.object({ ...requestIdentity, operation: z.literal("automation.addRoot"), payload: z.object({ name: z.string().trim().min(1).max(120), path: z.string().min(1).max(4096).refine((value) => value.startsWith("/"), "Path must be absolute") }).strict() }).strict(),
+  z.object({ ...requestIdentity, operation: z.literal("automation.removeRoot"), payload: z.object({ rootId: z.uuid() }).strict() }).strict(),
+  z.object({ ...requestIdentity, operation: z.literal("automation.listFiles"), payload: z.object({ rootId: z.uuid(), path: z.string().max(2048).default("") }).strict() }).strict(),
+  z.object({ ...requestIdentity, operation: z.literal("automation.prepareFile"), payload: z.object({ rootId: z.uuid(), action: z.enum(["copy", "move", "trash", "write"]), source: z.string().max(2048), destination: z.string().max(2048).optional(), content: z.string().max(5_000_000).optional() }).strict() }).strict(),
+  z.object({ ...requestIdentity, operation: z.literal("automation.approveFile"), payload: z.object({ actionId: z.uuid() }).strict() }).strict(),
+  z.object({ ...requestIdentity, operation: z.literal("automation.undoFile"), payload: z.object({ actionId: z.uuid() }).strict() }).strict(),
+  z.object({ ...requestIdentity, operation: z.literal("automation.capabilities"), payload: z.object({}).strict() }).strict(),
+  z.object({ ...requestIdentity, operation: z.literal("automation.prepareNative"), payload: z.object({ operation: z.enum(["open-path", "open-app", "inspect-target", "activate-control"]), target: z.record(z.string(), z.unknown()) }).strict() }).strict(),
+  z.object({ ...requestIdentity, operation: z.literal("automation.approveNative"), payload: z.object({ actionId: z.uuid() }).strict() }).strict(),
+  z.object({ ...requestIdentity, operation: z.literal("automation.takeover"), payload: z.object({}).strict() }).strict(),
+  z.object({ ...requestIdentity, operation: z.literal("voice.list"), payload: z.object({}).strict() }).strict(),
+  z.object({ ...requestIdentity, operation: z.literal("voice.configure"), payload: z.object({ wakeWordEnabled: z.boolean().optional(), muted: z.boolean().optional(), retainTranscripts: z.boolean().optional() }).strict() }).strict(),
+  z.object({ ...requestIdentity, operation: z.literal("voice.start"), payload: z.object({ mode: z.enum(["push-to-talk", "conversation"]) }).strict() }).strict(),
+  z.object({ ...requestIdentity, operation: z.literal("voice.partial"), payload: z.object({ sessionId: z.uuid(), utteranceId: z.uuid(), transcriptId: z.string().min(1).max(200), text: z.string().max(100_000) }).strict() }).strict(),
+  z.object({ ...requestIdentity, operation: z.literal("voice.transcribe"), payload: z.object({ sessionId: z.uuid(), utteranceId: z.uuid(), transcriptId: z.string().min(1).max(200), audioBase64: z.string().min(1).max(50_000_000), mimeType: z.string().min(1).max(100) }).strict() }).strict(),
+  z.object({ ...requestIdentity, operation: z.literal("voice.finalize"), payload: z.object({ sessionId: z.uuid(), utteranceId: z.uuid(), transcriptId: z.string().min(1).max(200), text: z.string().trim().min(1).max(100_000), model: z.string().min(1).max(200) }).strict() }).strict(),
+  z.object({ ...requestIdentity, operation: z.literal("voice.interrupt"), payload: z.object({ sessionId: z.uuid(), cancelTask: z.boolean().default(false) }).strict() }).strict(),
+  z.object({ ...requestIdentity, operation: z.literal("voice.played"), payload: z.object({ sessionId: z.uuid(), utteranceId: z.uuid() }).strict() }).strict(),
+  z.object({ ...requestIdentity, operation: z.literal("voice.wake"), payload: z.object({ phrase: z.string().max(200) }).strict() }).strict(),
+  z.object({ ...requestIdentity, operation: z.literal("remote.status"), payload: z.object({}).strict() }).strict(),
+  z.object({ ...requestIdentity, operation: z.literal("remote.createChallenge"), payload: z.object({ name: z.string().trim().min(1).max(120), workspaceIds: z.array(z.uuid()).min(1).max(100) }).strict() }).strict(),
+  z.object({ ...requestIdentity, operation: z.literal("remote.revoke"), payload: z.object({ deviceId: z.uuid() }).strict() }).strict(),
+  z.object({ ...requestIdentity, operation: z.literal("remote.setAvailabilityFixture"), payload: z.object({ available: z.boolean() }).strict() }).strict(),
+  z.object({ ...requestIdentity, operation: z.literal("backup.export"), payload: z.object({ destinationDirectory: z.string().min(1).max(4096).refine((value) => value.startsWith("/"), "Path must be absolute") }).strict() }).strict(),
+  z.object({ ...requestIdentity, operation: z.literal("backup.inspect"), payload: z.object({ backupPath: z.string().min(1).max(4096).refine((value) => value.startsWith("/"), "Path must be absolute") }).strict() }).strict(),
+  z.object({ ...requestIdentity, operation: z.literal("backup.restore"), payload: z.object({
+    backupPath: z.string().min(1).max(4096).refine((value) => value.startsWith("/"), "Path must be absolute"),
+    destinationParent: z.string().min(1).max(4096).refine((value) => value.startsWith("/"), "Path must be absolute"),
+    folderName: z.string().trim().min(1).max(120).refine((value) => value !== "." && value !== ".." && !/[\\/\0]/.test(value), "Folder name must be a single path component"),
+  }).strict() }).strict(),
   z.object({ ...requestIdentity, operation: z.literal("mcp.catalog"), payload: z.object({ query: z.string().max(200).default("") }).strict() }).strict(),
   z.object({ ...requestIdentity, operation: z.literal("mcp.list"), payload: z.object({}).strict() }).strict(),
   z.object({ ...requestIdentity, operation: z.literal("mcp.addStdio"), payload: z.object({ name: z.string().trim().min(1).max(120), command: z.string().trim().min(1).max(2048), args: z.array(z.string().max(4096)).max(100), cwd: z.string().max(2048).nullable().optional(), env: z.record(z.string().max(200), z.string().max(10_000)).optional() }).strict() }).strict(),
@@ -338,6 +369,12 @@ export const errorCodeSchema = z.enum([
   "AGENT_STATE_CONFLICT",
   "MCP_STATE_CONFLICT",
   "SCHEDULE_STATE_CONFLICT",
+  "AUTOMATION_STATE_CONFLICT",
+  "VOICE_STATE_CONFLICT",
+  "REMOTE_AUTH_FAILED",
+  "REMOTE_UNAVAILABLE",
+  "REMOTE_CONFLICT",
+  "BACKUP_CONFLICT",
 ]);
 
 export type ErrorCode = z.infer<typeof errorCodeSchema>;
@@ -357,6 +394,7 @@ export type ServiceResponse =
 export const serviceMessageSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("ready"), pid: z.number().int().positive() }).strict(),
   z.object({ kind: z.literal("response"), response: z.custom<ServiceResponse>() }).strict(),
+  z.object({ kind: z.literal("host.request"), requestId: z.uuid(), operation: z.enum(["browser.assign", "browser.list", "browser.action", "native.status", "native.action", "native.takeover"]), workspaceId: z.uuid(), taskId: z.uuid(), payload: z.record(z.string(), z.unknown()) }).strict(),
   z.object({
     kind: z.literal("event"),
     event: z.object({
@@ -371,6 +409,8 @@ export const serviceMessageSchema = z.discriminatedUnion("kind", [
 
 export type ServiceMessage = z.infer<typeof serviceMessageSchema>;
 export type ServiceEvent = Extract<ServiceMessage, { kind: "event" }>['event'];
+export type HostRequest = Extract<ServiceMessage, { kind: "host.request" }>;
+export type HostResponse = { kind: "host.response"; requestId: string; ok: true; data: unknown } | { kind: "host.response"; requestId: string; ok: false; error: string };
 
 export const serviceStateEventSchema = z.object({
   state: z.enum(["starting", "ready", "crashed", "stopping", "stopped"]),
@@ -392,10 +432,35 @@ export const IPC_CHANNELS = {
   mcpCredentialStatus: "voidra:secrets:mcp-status",
   setMcpCredential: "voidra:secrets:set-mcp",
   deleteMcpCredential: "voidra:secrets:delete-mcp",
+  elevenLabsCredentialStatus: "voidra:secrets:elevenlabs-status",
+  setElevenLabsCredential: "voidra:secrets:set-elevenlabs",
+  deleteElevenLabsCredential: "voidra:secrets:delete-elevenlabs",
   testCrash: "voidra:test:service-crash",
   isolationProbe: "voidra:test:isolation-probe",
   testReadClipboard: "voidra:test:read-clipboard",
   testSetClipboard: "voidra:test:set-clipboard",
+  browserList: "voidra:browser:list",
+  browserCreate: "voidra:browser:create",
+  browserClose: "voidra:browser:close",
+  browserActivate: "voidra:browser:activate",
+  browserBounds: "voidra:browser:bounds",
+  browserNavigate: "voidra:browser:navigate",
+  browserBack: "voidra:browser:back",
+  browserForward: "voidra:browser:forward",
+  browserReload: "voidra:browser:reload",
+  browserAssign: "voidra:browser:assign",
+  browserTakeover: "voidra:browser:takeover",
+  browserResume: "voidra:browser:resume",
+  browserAction: "voidra:browser:action",
+  browserUpdated: "voidra:browser:updated",
+  artifactList: "voidra:artifact:list",
+  artifactCreate: "voidra:artifact:create",
+  artifactRead: "voidra:artifact:read",
+  artifactSave: "voidra:artifact:save",
+  artifactPreview: "voidra:artifact:preview",
+  artifactBounds: "voidra:artifact:bounds",
+  artifactHide: "voidra:artifact:hide",
+  artifactExport: "voidra:artifact:export",
 } as const;
 
 export function publicError(

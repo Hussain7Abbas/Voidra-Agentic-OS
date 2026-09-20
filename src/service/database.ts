@@ -1,4 +1,6 @@
 import Database from "better-sqlite3";
+import { randomUUID } from "node:crypto";
+import { chmodSync } from "node:fs";
 
 export const CURRENT_SCHEMA_VERSION = 3;
 
@@ -40,24 +42,46 @@ export class IncompatibleSchemaError extends Error {
   }
 }
 
+export class DatabaseIntegrityError extends Error {
+  constructor(readonly result: string) {
+    super(`Database integrity check failed before migration: ${result}`);
+    this.name = "DatabaseIntegrityError";
+  }
+}
+
+type ServiceDatabaseOptions = {
+  beforeMigrationStep?: (fromVersion: number, toVersion: number) => void;
+};
+
 export class ServiceDatabase {
   readonly #database: Database.Database;
+  migrationBackupPath: string | null = null;
 
-  constructor(path: string) {
+  constructor(path: string, private readonly options: ServiceDatabaseOptions = {}) {
     this.#database = new Database(path);
-    this.#database.pragma("foreign_keys = ON");
-    this.#database.pragma("journal_mode = WAL");
-    this.#migrate();
+    try {
+      this.#database.pragma("foreign_keys = ON");
+      this.#database.pragma("journal_mode = WAL");
+      this.#migrate(path);
+    } catch (error) {
+      this.#database.close();
+      throw error;
+    }
   }
 
-  #migrate() {
+  #migrate(path: string) {
     let version = this.#database.pragma("user_version", { simple: true }) as number;
-    if (version > CURRENT_SCHEMA_VERSION) {
-      this.#database.close();
-      throw new IncompatibleSchemaError(version);
+    if (version > CURRENT_SCHEMA_VERSION) throw new IncompatibleSchemaError(version);
+    if (version > 0 && version < CURRENT_SCHEMA_VERSION && path !== ":memory:") {
+      const integrity = String(this.#database.pragma("quick_check", { simple: true }));
+      if (integrity !== "ok") throw new DatabaseIntegrityError(integrity);
+      this.migrationBackupPath = `${path}.pre-migration-v${version}-to-v${CURRENT_SCHEMA_VERSION}-${randomUUID()}.sqlite`;
+      this.#database.prepare("VACUUM INTO ?").run(this.migrationBackupPath);
+      chmodSync(this.migrationBackupPath, 0o600);
     }
-    if (version === 0) {
-      this.#database.transaction(() => {
+
+    this.#database.transaction(() => {
+      if (version === 0) {
         this.#database.exec(`
           CREATE TABLE service_metadata (
             key TEXT PRIMARY KEY NOT NULL,
@@ -66,11 +90,10 @@ export class ServiceDatabase {
           ) STRICT;
         `);
         this.#database.pragma("user_version = 1");
-      })();
-      version = 1;
-    }
-    if (version === 1) {
-      this.#database.transaction(() => {
+        version = 1;
+      }
+      if (version === 1) {
+        this.options.beforeMigrationStep?.(1, 2);
         this.#database.exec(`
           CREATE TABLE workspaces (
             id TEXT PRIMARY KEY NOT NULL,
@@ -90,11 +113,10 @@ export class ServiceDatabase {
           ) STRICT;
         `);
         this.#database.pragma("user_version = 2");
-      })();
-      version = 2;
-    }
-    if (version === 2) {
-      this.#database.transaction(() => {
+        version = 2;
+      }
+      if (version === 2) {
+        this.options.beforeMigrationStep?.(2, 3);
         this.#database.exec(`
           CREATE TABLE knowledge_bases (
             id TEXT PRIMARY KEY NOT NULL,
@@ -113,8 +135,8 @@ export class ServiceDatabase {
           ) STRICT;
         `);
         this.#database.pragma("user_version = 3");
-      })();
-    }
+      }
+    })();
   }
 
   setMetadata(key: string, value: string) {

@@ -2,8 +2,11 @@ import { randomUUID } from "node:crypto";
 import { mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, nativeImage, Notification, safeStorage, Tray, WebContentsView } from "electron";
-import { IPC_CHANNELS, WORKSPACE_ID_EXAMPLE, type ServiceRequest, type ServiceStateEvent } from "../shared/contracts";
+import { IPC_CHANNELS, WORKSPACE_ID_EXAMPLE, type HostRequest, type ServiceRequest, type ServiceStateEvent } from "../shared/contracts";
+import type { BrowserAction } from "../shared/browser-contracts";
 import { installAppProtocol, registerAppScheme } from "./app-protocol";
+import { BrowserManager } from "./browser-manager";
+import { NativeAutomationHost } from "./native-automation";
 import { ServiceSupervisor } from "./service-supervisor";
 
 registerAppScheme();
@@ -18,11 +21,14 @@ let mainWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
 let quitting = false;
 let supervisor: ServiceSupervisor;
+let browserManager: BrowserManager;
+const nativeAutomation = new NativeAutomationHost();
 let folderResults: Array<string | null> = [];
 let testClipboard = "";
 const notifiedOccurrences = new Set<string>();
 
 function openRouterCredentialPath() { return join(app.getPath("userData"), "secrets", "openrouter.bin"); }
+function elevenLabsCredentialPath() { return join(app.getPath("userData"), "secrets", "elevenlabs.bin"); }
 function mcpCredentialDirectory() { return join(app.getPath("userData"), "secrets", "mcp"); }
 function assertConnectionId(value: unknown): asserts value is string {
   if (typeof value !== "string" || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)) throw new Error("Invalid MCP connection identity.");
@@ -42,6 +48,8 @@ function writeOpenRouterCredential(value: string) {
   mkdirSync(resolve(path, ".."), { recursive: true });
   writeFileSync(path, safeStorage.encryptString(value), { mode: 0o600 });
 }
+function readElevenLabsCredential() { if (process.env.VOIDRA_ELEVENLABS_TEST_KEY) return process.env.VOIDRA_ELEVENLABS_TEST_KEY; if (!safeStorage.isEncryptionAvailable()) return null; try { return safeStorage.decryptString(readFileSync(elevenLabsCredentialPath())); } catch { return null; } }
+function writeElevenLabsCredential(value: string) { if (!safeStorage.isEncryptionAvailable()) throw new Error("Secure credential storage is unavailable on this Mac."); const path = elevenLabsCredentialPath(); mkdirSync(resolve(path, ".."), { recursive: true }); writeFileSync(path, safeStorage.encryptString(value), { mode: 0o600 }); }
 
 function readMcpCredential(connectionId: string) {
   if (!safeStorage.isEncryptionAvailable()) return null;
@@ -96,6 +104,8 @@ function createWindow() {
     },
   });
 
+  window.webContents.session.setPermissionCheckHandler((webContents, permission, requestingOrigin) => webContents === window.webContents && permission === "media" && requestingOrigin.startsWith("app://voidra"));
+  window.webContents.session.setPermissionRequestHandler((webContents, permission, callback, details) => callback(webContents === window.webContents && permission === "media" && details.requestingUrl.startsWith("app://voidra/")));
   window.once("ready-to-show", () => window.show());
   window.on("close", (event) => {
     if (process.platform === "darwin" && !quitting) {
@@ -129,6 +139,30 @@ function broadcastState(event: ServiceStateEvent) {
   for (const window of BrowserWindow.getAllWindows()) {
     if (!window.isDestroyed()) window.webContents.send(IPC_CHANNELS.serviceState, event);
   }
+}
+
+function broadcastBrowserUpdate(workspaceId: string) {
+  for (const window of BrowserWindow.getAllWindows()) {
+    if (!window.isDestroyed()) window.webContents.send(IPC_CHANNELS.browserUpdated, { workspaceId });
+  }
+}
+
+async function handleHostRequest(request: HostRequest) {
+  if (request.operation === "native.status") return nativeAutomation.status();
+  if (request.operation === "native.takeover") return nativeAutomation.takeover();
+  if (request.operation === "native.action") return nativeAutomation.action(request.workspaceId, request.taskId, { operation: String(request.payload.operation ?? ""), target: request.payload.target && typeof request.payload.target === "object" && !Array.isArray(request.payload.target) ? request.payload.target as Record<string, unknown> : {} });
+  if (request.operation === "browser.assign") return browserManager.assign(request.workspaceId, String(request.payload.tabId ?? ""), request.taskId);
+  if (request.operation === "browser.list") return browserManager.assignedTabs(request.workspaceId, request.taskId);
+  const kind = String(request.payload.action ?? "") as BrowserAction["kind"];
+  let action: BrowserAction;
+  if (kind === "navigate") action = { kind, url: String(request.payload.url ?? "") };
+  else if (kind === "read") action = { kind };
+  else if (kind === "click") action = { kind, selector: String(request.payload.selector ?? "") };
+  else if (kind === "type") action = { kind, selector: String(request.payload.selector ?? ""), text: String(request.payload.text ?? "") };
+  else if (kind === "select") action = { kind, selector: String(request.payload.selector ?? ""), value: String(request.payload.value ?? "") };
+  else if (kind === "wait") action = { kind, selector: String(request.payload.selector ?? ""), timeoutMs: typeof request.payload.timeoutMs === "number" ? request.payload.timeoutMs : undefined };
+  else throw new Error("Unsupported browser action.");
+  return browserManager.action(request.workspaceId, String(request.payload.tabId ?? ""), request.taskId, String(request.payload.documentId ?? ""), action);
 }
 
 function registerIpc() {
@@ -205,6 +239,35 @@ function registerIpc() {
     supervisor.setCredential(`mcp:${connectionId}`, null);
     return { configured: false };
   });
+  ipcMain.handle(IPC_CHANNELS.elevenLabsCredentialStatus, (event) => { assertTrustedSender(event.senderFrame?.url); return { configured: Boolean(readElevenLabsCredential()), secureStorageAvailable: safeStorage.isEncryptionAvailable() }; });
+  ipcMain.handle(IPC_CHANNELS.setElevenLabsCredential, (event, value: unknown) => { assertTrustedSender(event.senderFrame?.url); if (typeof value !== "string" || value.trim().length < 8 || value.length > 500) throw new Error("The ElevenLabs credential is invalid."); writeElevenLabsCredential(value.trim()); supervisor.setCredential("elevenlabs", value.trim()); return { configured: true }; });
+  ipcMain.handle(IPC_CHANNELS.deleteElevenLabsCredential, (event) => { assertTrustedSender(event.senderFrame?.url); rmSync(elevenLabsCredentialPath(), { force: true }); supervisor.setCredential("elevenlabs", null); return { configured: false }; });
+  const browserArgs = (event: Electron.IpcMainInvokeEvent, workspaceId: unknown, workspaceRoot: unknown) => {
+    assertTrustedSender(event.senderFrame?.url);
+    if (typeof workspaceId !== "string" || typeof workspaceRoot !== "string") throw new Error("Invalid browser workspace context.");
+    return { workspaceId, workspaceRoot };
+  };
+  ipcMain.handle(IPC_CHANNELS.browserList, (event, workspaceId, workspaceRoot) => { const value = browserArgs(event, workspaceId, workspaceRoot); return browserManager.list(value.workspaceId, value.workspaceRoot); });
+  ipcMain.handle(IPC_CHANNELS.browserCreate, (event, workspaceId, workspaceRoot, url) => { const value = browserArgs(event, workspaceId, workspaceRoot); return browserManager.create(value.workspaceId, value.workspaceRoot, typeof url === "string" ? url : undefined); });
+  ipcMain.handle(IPC_CHANNELS.browserClose, (event, workspaceId, tabId) => { assertTrustedSender(event.senderFrame?.url); return browserManager.close(String(workspaceId), String(tabId)); });
+  ipcMain.handle(IPC_CHANNELS.browserActivate, (event, workspaceId, tabId, bounds) => { assertTrustedSender(event.senderFrame?.url); return browserManager.activate(String(workspaceId), String(tabId), bounds); });
+  ipcMain.handle(IPC_CHANNELS.browserBounds, (event, workspaceId, tabId, bounds) => { assertTrustedSender(event.senderFrame?.url); return browserManager.setBounds(String(workspaceId), String(tabId), bounds); });
+  ipcMain.handle(IPC_CHANNELS.browserNavigate, (event, workspaceId, tabId, url) => { assertTrustedSender(event.senderFrame?.url); return browserManager.navigate(String(workspaceId), String(tabId), String(url)); });
+  ipcMain.handle(IPC_CHANNELS.browserBack, (event, workspaceId, tabId) => { assertTrustedSender(event.senderFrame?.url); return browserManager.back(String(workspaceId), String(tabId)); });
+  ipcMain.handle(IPC_CHANNELS.browserForward, (event, workspaceId, tabId) => { assertTrustedSender(event.senderFrame?.url); return browserManager.forward(String(workspaceId), String(tabId)); });
+  ipcMain.handle(IPC_CHANNELS.browserReload, (event, workspaceId, tabId) => { assertTrustedSender(event.senderFrame?.url); return browserManager.reload(String(workspaceId), String(tabId)); });
+  ipcMain.handle(IPC_CHANNELS.browserAssign, (event, workspaceId, tabId, taskId) => { assertTrustedSender(event.senderFrame?.url); return browserManager.assign(String(workspaceId), String(tabId), String(taskId)); });
+  ipcMain.handle(IPC_CHANNELS.browserTakeover, (event, workspaceId, tabId) => { assertTrustedSender(event.senderFrame?.url); return browserManager.takeover(String(workspaceId), String(tabId)); });
+  ipcMain.handle(IPC_CHANNELS.browserResume, (event, workspaceId, tabId) => { assertTrustedSender(event.senderFrame?.url); return browserManager.resume(String(workspaceId), String(tabId)); });
+  ipcMain.handle(IPC_CHANNELS.browserAction, (event, workspaceId, tabId, taskId, documentId, action) => { assertTrustedSender(event.senderFrame?.url); return browserManager.action(String(workspaceId), String(tabId), String(taskId), String(documentId), action); });
+  ipcMain.handle(IPC_CHANNELS.artifactList, (event, workspaceId, workspaceRoot) => { const value = browserArgs(event, workspaceId, workspaceRoot); return browserManager.listArtifacts(value.workspaceId, value.workspaceRoot); });
+  ipcMain.handle(IPC_CHANNELS.artifactCreate, (event, workspaceId, workspaceRoot, input) => { const value = browserArgs(event, workspaceId, workspaceRoot); return browserManager.createArtifact(value.workspaceId, value.workspaceRoot, input); });
+  ipcMain.handle(IPC_CHANNELS.artifactRead, (event, workspaceId, workspaceRoot, artifactId, path) => { const value = browserArgs(event, workspaceId, workspaceRoot); return browserManager.readArtifact(value.workspaceId, value.workspaceRoot, String(artifactId), String(path)); });
+  ipcMain.handle(IPC_CHANNELS.artifactSave, (event, workspaceId, workspaceRoot, artifactId, path, content, revision) => { const value = browserArgs(event, workspaceId, workspaceRoot); return browserManager.saveArtifact(value.workspaceId, value.workspaceRoot, String(artifactId), String(path), String(content), String(revision)); });
+  ipcMain.handle(IPC_CHANNELS.artifactPreview, (event, workspaceId, workspaceRoot, artifactId, bounds) => { const value = browserArgs(event, workspaceId, workspaceRoot); return browserManager.previewArtifact(value.workspaceId, value.workspaceRoot, String(artifactId), bounds); });
+  ipcMain.handle(IPC_CHANNELS.artifactBounds, (event, workspaceId, artifactId, bounds) => { assertTrustedSender(event.senderFrame?.url); return browserManager.setArtifactBounds(String(workspaceId), String(artifactId), bounds); });
+  ipcMain.handle(IPC_CHANNELS.artifactHide, (event) => { assertTrustedSender(event.senderFrame?.url); return browserManager.hide(); });
+  ipcMain.handle(IPC_CHANNELS.artifactExport, (event, workspaceId, workspaceRoot, artifactId) => { const value = browserArgs(event, workspaceId, workspaceRoot); return browserManager.exportArtifact(value.workspaceId, value.workspaceRoot, String(artifactId)); });
 
   if (isTestMode) {
     ipcMain.handle(IPC_CHANNELS.testCrash, (event) => {
@@ -257,6 +320,8 @@ app.whenReady().then(async () => {
   supervisor = new ServiceSupervisor({
     entryPath: join(__dirname, "../service/process.cjs"),
     databasePath: join(app.getPath("userData"), "state", "foundation.sqlite"),
+    runtimeMode: isTestMode ? "test" : "production",
+    hostRequest: handleHostRequest,
   });
   supervisor.on("state", broadcastState);
   supervisor.on("log", (message) => console.error(`[local-service] ${message}`));
@@ -270,10 +335,13 @@ app.whenReady().then(async () => {
     notification.show();
   });
   supervisor.setCredential("openrouter", readOpenRouterCredential());
+  supervisor.setCredential("elevenlabs", readElevenLabsCredential());
   restoreMcpCredentials();
   registerIpc();
   createTray();
   const window = createWindow();
+  browserManager = new BrowserManager(window, app.getPath("userData"), broadcastBrowserUpdate);
+  await browserManager.initialize();
   await supervisor.start();
   await writeSmokeMarkerWhenReady(window);
 });
@@ -285,6 +353,7 @@ app.on("activate", () => {
 
 app.on("before-quit", () => {
   quitting = true;
+  browserManager?.destroy();
   void supervisor?.stop();
 });
 

@@ -1,7 +1,7 @@
 import { EventEmitter } from "node:events";
 import { fork, type ChildProcess } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { serviceMessageSchema, serviceRequestSchema, publicError, type ServiceEvent, type ServiceRequest, type ServiceResponse, type ServiceStateEvent } from "../shared/contracts";
+import { serviceMessageSchema, serviceRequestSchema, publicError, type HostRequest, type HostResponse, type ServiceEvent, type ServiceRequest, type ServiceResponse, type ServiceStateEvent } from "../shared/contracts";
 import { ServiceLifecycle } from "../shared/service-lifecycle";
 
 type PendingRequest = {
@@ -15,6 +15,8 @@ export type SupervisorOptions = {
   requestTimeoutMs?: number;
   maxRestartAttempts?: number;
   restartWindowMs?: number;
+  hostRequest?: (request: HostRequest) => Promise<unknown>;
+  runtimeMode?: "production" | "test";
 };
 
 export class ServiceSupervisor extends EventEmitter {
@@ -45,6 +47,7 @@ export class ServiceSupervisor extends EventEmitter {
           ...process.env,
           ELECTRON_RUN_AS_NODE: "1",
           VOIDRA_SERVICE_DB_PATH: this.options.databasePath,
+          VOIDRA_RUNTIME_MODE: this.options.runtimeMode ?? "production",
         },
         stdio: ["ignore", "pipe", "pipe", "ipc"],
       });
@@ -77,6 +80,8 @@ export class ServiceSupervisor extends EventEmitter {
           }
         } else if (message.kind === "response") {
           this.#resolveResponse(message.response);
+        } else if (message.kind === "host.request") {
+          void this.#handleHostRequest(child, message);
         } else {
           this.emit("service-event", message.event as ServiceEvent);
         }
@@ -162,6 +167,15 @@ export class ServiceSupervisor extends EventEmitter {
   setCredential(provider: string, value: string | null) {
     this.#credentials.set(provider, value);
     if (this.#child?.connected) this.#child.send({ kind: "credential.update", provider, value });
+  }
+
+  async #handleHostRequest(child: ChildProcess, request: HostRequest) {
+    let response: HostResponse;
+    try {
+      if (!this.options.hostRequest) throw new Error("The requested desktop host capability is unavailable.");
+      response = { kind: "host.response", requestId: request.requestId, ok: true, data: await this.options.hostRequest(request) };
+    } catch (error) { response = { kind: "host.response", requestId: request.requestId, ok: false, error: error instanceof Error ? error.message : "Desktop host request failed." }; }
+    if (child.connected) child.send(response);
   }
 
   #resolveResponse(response: ServiceResponse) {
