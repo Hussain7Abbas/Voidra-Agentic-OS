@@ -47,6 +47,32 @@ test.afterEach(async () => {
   await rm(temporaryRoot, { recursive: true, force: true });
 });
 
+test("command center preserves the ARMS overview and respects reduced motion", async () => {
+  const profile = join(temporaryRoot, "profile");
+  const work = join(temporaryRoot, "Work");
+  await mkdir(work);
+  application = await launch(profile, [work]);
+  const window = await application.firstWindow();
+  await createWorkspace(window, "Work");
+
+  const commandCenter = window.getByRole("region", { name: "Work command center" });
+  await expect(commandCenter).toBeVisible();
+  await expect(window.locator(".sidebar")).toHaveCount(0);
+  await expect(window.locator(".topbar")).toHaveCount(0);
+  await expect(commandCenter.getByRole("navigation", { name: "Primary navigation" })).toBeVisible();
+  await expect(commandCenter.getByText("VOIDRA AGENTIC OS")).toBeVisible();
+  await expect(commandCenter.locator(".cc-brain-toolbar").getByText("Second brain", { exact: true })).toBeVisible();
+  await expect(commandCenter.locator(".cc-skills").getByText("Skills deck", { exact: true })).toBeVisible();
+  await expect(commandCenter.locator(".cc-routines").getByText("Routines", { exact: true })).toBeVisible();
+  await expect(commandCenter.locator(".cc-artifact-title").getByText("Artifact ring", { exact: true })).toBeVisible();
+  await expect(commandCenter.getByLabel("Search command center")).toBeVisible();
+
+  const core = commandCenter.locator(".cc-core");
+  await expect.poll(() => core.evaluate((element) => getComputedStyle(element).animationName)).toContain("cc-core-breathe");
+  await window.emulateMedia({ reducedMotion: "reduce" });
+  await expect.poll(() => core.evaluate((element) => getComputedStyle(element).animationName)).toBe("none");
+});
+
 test("first launch creates two roots and restores selection and route", async () => {
   const profile = join(temporaryRoot, "profile");
   const work = join(temporaryRoot, "Work");

@@ -16,6 +16,7 @@ import { BrowserPanel } from "@/components/browser-panel";
 import { AutomationPanel } from "@/components/automation-panel";
 import { VoicePanel } from "@/components/voice-panel";
 import { RemotePanel } from "@/components/remote-panel";
+import { CommandCenter } from "@/components/command-center";
 
 const FALLBACK_WORKSPACE_ID = "018f0f73-89db-7a63-a1b2-5d46f598ed01";
 
@@ -480,8 +481,8 @@ export function Shell({ section }: { section: SectionId }) {
   };
 
   return (
-    <main className="app-shell">
-      <aside className="sidebar" aria-label="Primary navigation">
+    <main className={section === "today" ? "app-shell command-mode" : "app-shell"}>
+      {section !== "today" && <aside className="sidebar" aria-label="Primary navigation">
         <div className="brand"><img src="/voidra-mark.svg" alt="" width="34" height="34" /><span>VOIDRA</span></div>
         <div className="workspace-switcher">
           <span className="workspace-dot" />
@@ -493,18 +494,38 @@ export function Shell({ section }: { section: SectionId }) {
         </div>
         <nav>{navigation.map((item) => <a key={item.id} href={routeFor(item.id)} className={item.id === section ? "active" : undefined} aria-current={item.id === section ? "page" : undefined}><span aria-hidden="true">{item.symbol}</span>{item.label}</a>)}</nav>
         <div className="runtime-card"><span className={`status-light ${serviceStatus}`} /><div><strong>Local runtime</strong><small>{serviceStatus}{latency ? ` · ${latency} ms` : ""}</small></div></div>
-      </aside>
+      </aside>}
 
       <section className="workspace">
-        <header className="topbar"><span className="crumb">{selectedWorkspace?.name ?? "Setup"} / {content.title}</span><div className="top-actions"><button aria-label="Open command palette">⌘ K</button><span className="avatar">V</span></div></header>
-        <div className="content">
+        {section !== "today" && <header className="topbar"><span className="crumb">{selectedWorkspace?.name ?? "Setup"} / {content.title}</span><div className="top-actions"><button aria-label="Open command palette">⌘ K</button><span className="avatar">V</span></div></header>}
+        <div className={section === "today" ? "content content-command" : "content"}>
           {selectedWorkspace && !selectedWorkspace.available && <div className="warning-banner" role="alert"><span><strong>{selectedWorkspace.name} is unavailable.</strong> Its identity and settings are preserved.</span><button onClick={locateWorkspace}>Locate folder</button></div>}
           {selectedWorkspace?.instructionIssues?.length ? <div className="warning-banner" role="alert"><span><strong>Instruction files need review.</strong> {selectedWorkspace.instructionIssues.map((issue) => issue.code).join(", ")}</span><a href="/settings/">Review settings</a></div> : null}
           {workspaceError && <div className="warning-banner" role="alert"><span>{workspaceError}</span><button onClick={() => setWorkspaceError("")}>Dismiss</button></div>}
-          <p className="eyebrow">{content.eyebrow}</p><h1>{content.title}</h1><p className="lede">{content.body}</p>
+          {section !== "today" && <><p className="eyebrow">{content.eyebrow}</p><h1>{content.title}</h1><p className="lede">{content.body}</p></>}
 
           {section === "today" && selectedWorkspace ? (
-            <div className="planner-stack"><PlannerPanel workspaceId={selectedWorkspace.id} request={request} /><div className="grid"><article className="hero-card"><div className="orb" aria-hidden="true"><span /></div><div><p className="card-label">WORKSPACE CONTEXT</p><h2>{selectedWorkspace.name}</h2><p>{selectedWorkspace.canonicalPath}</p><button className="primary" onClick={ping} disabled={!bridgeAvailable || serviceStatus !== "ready"}>Check runtime</button></div></article><article className="panel" aria-live="polite"><p className="card-label">FOUNDATION DIAGNOSTICS</p><dl><div><dt>Renderer bridge</dt><dd>{bridgeAvailable ? "Connected" : "Web preview"}</dd></div><div><dt>Service</dt><dd data-testid="service-status">{recovered ? "Recovered" : serviceStatus}</dd></div><div><dt>Workspace identity</dt><dd data-testid="workspace-id">{selectedWorkspace.id}</dd></div><div><dt>Content isolation</dt><dd data-testid="isolation-result">{isolationMessage}</dd></div></dl><div className="button-row">{diagnosticsAvailable && <button onClick={runIsolationProbe}>Test isolation</button>}{diagnosticsAvailable && <button onClick={() => window.voidra?.diagnostics?.simulateServiceCrash()}>Simulate crash</button>}</div></article></div></div>
+            <div className="command-stack">
+              <CommandCenter
+                workspace={selectedWorkspace}
+                workspaces={registry?.workspaces ?? [selectedWorkspace]}
+                request={request}
+                serviceStatus={serviceStatus}
+                latency={latency}
+                recovered={recovered}
+                diagnosticsAvailable={diagnosticsAvailable}
+                isolationMessage={isolationMessage}
+                onPing={() => void ping()}
+                onSwitchWorkspace={(workspaceId) => void switchWorkspace(workspaceId)}
+                onAddWorkspace={() => setDialogOpen(true)}
+                onIsolationProbe={() => void runIsolationProbe()}
+                onSimulateCrash={() => window.voidra?.diagnostics?.simulateServiceCrash()}
+              />
+              <section id="today-planner" className="today-planner-section" aria-labelledby="today-planner-title">
+                <div className="today-planner-heading"><p className="eyebrow">Your local day</p><h2 id="today-planner-title">Plan the day</h2><p>{content.body}</p></div>
+                <PlannerPanel workspaceId={selectedWorkspace.id} request={request} />
+              </section>
+            </div>
           ) : section === "settings" && selectedWorkspace ? (
             <SettingsPanel workspace={selectedWorkspace} registry={registry!} request={request} reloadRegistry={loadRegistry} />
           ) : section === "notes" && selectedWorkspace ? (
