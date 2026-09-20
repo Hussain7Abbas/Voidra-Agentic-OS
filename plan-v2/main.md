@@ -1,6 +1,6 @@
 # Voidra V2 — ARMS command-center plan
 
-Status: implementation started on 2026-09-20. The first reversible V2-05 presentation slice is implemented on the Today route using existing V1 service contracts; the remaining V2 phases, command-center layout system, and headless Claude/Codex runtime are not yet implemented. V1 automated implementation remains complete as recorded in [`plan/main.md`](../plan/main.md); its live/native/audio/network/signing acceptance items remain pending.
+Status: implementation started on 2026-09-20. The first reversible V2-05 presentation slice exists on the Today route, but it is now treated as a disposable prototype rather than the visual foundation. The approved direction is a full design-system reset, no permanent application sidebar, a high-fidelity recreation of the video's dashboard grammar, a real Markdown knowledge globe with an artifact ring, and reviewed Next.js component artifacts. None of V2-06–V2-11 is implemented. V1 automated implementation remains complete as recorded in [`plan/main.md`](../plan/main.md); its live/native/audio/network/signing acceptance items remain pending.
 
 ## Goal
 
@@ -13,7 +13,8 @@ The finished V2 should let a user:
 3. Run a skill manually, through OpenRouter, or headlessly through an installed Claude Code or Codex CLI.
 4. Schedule those execution modes locally while the Mac is awake and inspect every run.
 5. Connect applications through reviewed MCP, API, or CLI adapters and expose their summaries as widgets.
-6. Use a configurable command center with live widgets, a skills deck, routine status, searchable artifacts, micro apps, and the second-brain graph.
+6. Use a configurable, edge-to-edge command center with live widgets, a skills deck, routine status, searchable artifacts, micro apps, and the second-brain graph—without the old sidebar shell.
+7. Generate artifacts as versioned Next.js/React components that inherit Voidra's design system, run behind a capability broker, and cannot become usable until deterministic checks and an independent security-review agent approve the exact artifact version.
 
 ## Evidence used
 
@@ -30,7 +31,13 @@ The source video, [“The NEW Agentic OS standard for Claude 5 Models is here”
 - Routines are scheduled prompts that should surface their outputs for review.
 - Application connections may be official connectors, APIs, CLIs, MCP servers, or purpose-built micro apps.
 
-The referenced screenshot reinforces the target visual hierarchy: a dark command-center canvas, central graph, orbiting entities, left-side micro apps/calendar/content metrics, right-side email/skills/routines, and an artifact-oriented navigation model. V2 will implement the information architecture, not a pixel-for-pixel copy.
+The referenced screenshot reinforces the target visual hierarchy: a dark edge-to-edge command-center canvas, central graph, orbiting entities, left-side micro apps/calendar/content metrics, right-side email/skills/routines, and an artifact-oriented navigation model. The follow-up research and the distinction between direct observation and design inference are recorded in [`research-video-ui.md`](research-video-ui.md). V2 will closely reproduce the layout, density, motion grammar, and interaction hierarchy while using Voidra names, icons, content, and original assets.
+
+### Official platform constraints for generated component artifacts
+
+- Next.js distinguishes Server and Client Component module graphs, and client interactivity crosses an explicit `"use client"` boundary; V2 must not treat arbitrary generated TSX as trusted server code. See the official [Server and Client Components guide](https://nextjs.org/docs/app/getting-started/server-and-client-components) and [lazy-loading guide](https://nextjs.org/docs/app/guides/lazy-loading).
+- Electron warns that untrusted code has far greater impact in a desktop shell and recommends process sandboxing, context isolation, restrictive CSP, no Node integration, limited navigation/window creation, and sender validation for privileged IPC. See Electron's [security checklist](https://www.electronjs.org/docs/latest/tutorial/security), [context isolation](https://www.electronjs.org/docs/latest/tutorial/context-isolation), and [process sandboxing](https://www.electronjs.org/docs/latest/tutorial/sandbox).
+- MCP authorization is server/resource authorization, not permission for a generated UI to call every tool. The artifact broker must independently pin server/tool identity, validate typed arguments, honor current grants, and retain consent/audit. See the official [MCP Apps authorization guidance](https://apps.extensions.modelcontextprotocol.io/api/documents/authorization.html).
 
 ### Official CLI facts that constrain the plan
 
@@ -42,23 +49,27 @@ The referenced screenshot reinforces the target visual hierarchy: a dark command
 
 | Area | V1 evidence | V2 gap |
 | --- | --- | --- |
-| Desktop shell | Next.js/Electron deep routes plus an initial responsive, full-window command-center home are implemented | No resizable layout editor, widget registry, saved list mode, or layout persistence |
+| Desktop shell | Next.js/Electron deep routes plus an initial responsive, full-window command-center home are implemented | Deep routes still use the old sidebar/chrome; there is no binding reference-derived system, complete page migration, resizable layout editor, widget registry, saved list mode, or layout persistence |
 | Skills | Versioned Markdown instructions and routines are implemented | No bundle references/assets/scripts, import/export, or compatibility validation |
 | Memory | Private/shared Markdown, FTS, graph, tags, and editable memory exist | No router-file workflow, unified ARMS graph, or large-graph progressive exploration |
 | Execution | Manual Claude/Codex handoff and automatic OpenRouter runs exist | No supervised local `claude -p` or `codex exec` provider |
 | Routines | Awake-only schedules, Plan the Day, and run history exist | No headless CLI dispatch, skills deck, resource governor, or unified run timeline |
 | Applications | MCP catalog/custom servers, browser, Mac actions, voice, and remote boundaries exist | No normalized app-summary/widget contract or micro-app promotion flow |
-| Artifacts | Isolated HTML bundles and generated files can be opened | No cross-run artifact catalog, metadata extraction, search, lineage, or ring view |
+| Artifacts | Isolated HTML bundles and generated files can be opened | HTML is a legacy format; there is no reviewed Next.js component package, shared design-system SDK, capability manifest/broker, security verdict, cross-run catalog, lineage, or ring view |
 | Release | Automated V1 gate and Apple Silicon package exist | V1 live gates remain pending; V2 adds new CLI/security/performance gates |
 
 V2 is additive. It must migrate existing data in place, retain every V1 workflow, and remain able to disable all V2 features through feature flags during rollout.
 
 ## Confirmed V2 scope
 
-The user's latest request adds two requirements to the existing product contract:
+The user's latest requests add these requirements to the existing product contract:
 
 1. Build toward the video's ARMS-style agentic OS and command-center experience.
 2. Support headless execution of both Claude Code and Codex.
+3. Ditch the old design across every current page: no permanent sidebar, and use the video's layout, density, animation, and transition patterns as the V2 design reference.
+4. Make the center a real graph of Markdown files with artifacts surrounding it, not a decorative orb.
+5. Generate new interactive artifacts as Next.js/React components that use Voidra's design system and access only explicitly exposed filesystem/MCP capabilities.
+6. Run an independent security-review agent on every completed artifact, with deterministic checks and runtime containment as mandatory companion gates.
 
 All existing requirements remain in force, especially:
 
@@ -74,12 +85,12 @@ All existing requirements remain in force, especially:
 
 ### Command center
 
-The default V2 home is a per-workspace canvas with a stable top bar for workspace identity, global search, run status, privacy state, and Stop All. The initial layout includes:
+The default V2 home is a per-workspace, edge-to-edge canvas with no permanent sidebar and no inherited V1 application chrome. Workspace identity, search, run state, privacy state, and Stop All live in compact canvas controls modeled on the reference rather than in a conventional product header. The initial layout includes:
 
-- Central constellation: router files, notes, skills, routines, apps, and artifacts as typed nodes with explainable edges.
+- Central knowledge globe: Markdown routers/notes/skills/references form the inner linked graph; reviewed artifacts occupy the surrounding ring; every node and edge is backed by indexed data and has an explainable textual equivalent.
 - Skills deck: pinned skills with provider, model, effort, risk profile, estimated context, and Run.
 - Routine board: next occurrences, owning workspace, execution mode, current state, and last artifact.
-- Artifact ring: searchable recent outputs grouped by project/tag/run, with lineage back to inputs and the producing skill.
+- Artifact ring: searchable reviewed component/file outputs grouped by project/tag/run, with lineage back to Markdown inputs and the producing skill.
 - Calendar/time widget and attention widget backed by explicit connectors; unavailable connectors show honest empty states.
 - Micro-app dock: reviewed local apps or safe external links, never privileged renderer code.
 - Resource widget: active processes, elapsed time, usage when emitted by a provider, queue depth, and cancellation.
@@ -128,7 +139,10 @@ Authentication remains the vendor CLI's responsibility. Voidra may invoke a docu
 | CLI broker | Discovery, capability negotiation, sanitized spawn, event normalization, cancellation | Renderer never receives process handles or secrets |
 | Run sandbox | Materialized allowed inputs, scratch output, diff, artifact manifest | No canonical write before writeback review |
 | Routine orchestrator V2 | Resolve execution provider, queue, limits, missed-run behavior, outcome linkage | Schedule ownership remains workspace-bound |
-| Artifact catalog | Content-addressed metadata, preview, lineage, search | Never executes artifact code with the privileged bridge |
+| Artifact catalog | Content-addressed metadata, preview, lineage, search, review state, and component-version digest | Unapproved code remains quarantined and cannot enter the normal preview/runtime |
+| Component artifact builder | Validates and bundles a constrained Next.js/React component package against a pinned Voidra UI SDK | Generated code cannot import arbitrary packages, server modules, Node built-ins, or global CSS |
+| Artifact security reviewer | Performs independent agent review after deterministic static/build checks and emits a structured verdict for the exact digest | The reviewer is read-only, receives no artifact capabilities, and cannot approve its own generated code |
+| Artifact capability broker | Mediates filesystem, MCP, network, and host actions using artifact/version/workspace-scoped grants | No ambient Electron/Node bridge, credentials, raw process handles, or implicit MCP access |
 | App/widget registry | Normalized read/query/action contracts and freshness | Widgets cannot call connectors or filesystem directly |
 | Command-center renderer | Layout, visualizations, commands, accessible alternatives | Presentation only; all effects use validated service requests |
 
@@ -141,10 +155,15 @@ Authentication remains the vendor CLI's responsibility. Voidra may invoke a docu
 | V2-02 | [Headless Claude and Codex runtime](phase-02-headless-claude-codex.md) | Safe, observable local CLI runs with staged outputs and normalized events | V2-00; V2-01 context contract |
 | V2-03 | [Routines, runs, and artifact lineage](phase-03-routines-runs-artifacts.md) | Headless-aware schedules, resource controls, run inspection, and a searchable artifact catalog | V2-01, V2-02 |
 | V2-04 | [Applications and micro apps](phase-04-apps-microapps.md) | Unified connectors, widget data sources, and isolated custom micro apps | V2-00; V1 P06/P08/P09 |
-| V2-05 | [Visual command center](phase-05-command-center.md) | The screenshot/video-inspired customizable dashboard and interactive second brain | V2-01, V2-03, V2-04 |
-| V2-06 | [Hardening and release](phase-06-hardening-release.md) | Migration, security, scale, real CLI, native, and packaged release evidence | V2-00–V2-05 |
+| V2-05 | [Visual command center prototype](phase-05-command-center.md) | Retain service/view-model lessons while explicitly superseding its current visual shell | V2-01, V2-03, V2-04 |
+| V2-06 | [Design-system reset](phase-06-design-system-reset.md) | Make the reference-derived design rules binding and retire the old sidebar/chrome patterns | V2-05 research prototype |
+| V2-07 | [Whole-product redesign](phase-07-product-redesign.md) | Redesign every current page with the new shell, panels, motion, and transitions | V2-06 |
+| V2-08 | [Knowledge globe and artifact ring](phase-08-knowledge-globe-artifact-ring.md) | Build the real Markdown relationship globe with reviewed artifacts around it | V2-01, V2-03, V2-06 |
+| V2-09 | [Next.js component artifact runtime](phase-09-nextjs-artifact-runtime.md) | Replace new HTML artifacts with constrained, design-system-native component packages | V2-03, V2-06 |
+| V2-10 | [Artifact security review and capabilities](phase-10-artifact-security-review.md) | Gate every component version through deterministic and agent review, then mediate explicit filesystem/MCP capabilities | V2-09; V2-02/V2-04 permission contracts |
+| V2-11 | [Hardening and release](phase-11-hardening-release.md) | Migration, design fidelity, artifact security, scale, real CLI, native, and packaged release evidence | V2-00–V2-10 |
 
-Dependencies are real gates, not a requirement to serialize unrelated design work. V2-04 connector contracts may proceed beside V2-01 after V2-00, but dashboard integration waits for stable contracts.
+Dependencies are real gates, not a requirement to serialize unrelated design work. V2-04 connector contracts may proceed beside V2-01 after V2-00. V2-08 graph-data work and V2-09 artifact-package schema may proceed in parallel after their stated dependencies, but artifact capability exposure waits for V2-10 and release waits for V2-11.
 
 ## MoSCoW priority
 
@@ -156,6 +175,11 @@ Dependencies are real gates, not a requirement to serialize unrelated design wor
 - Claude and Codex headless providers with preflight, cancellation, staged writes, and redacted journals.
 - Awake-only routine integration and a durable artifact catalog.
 - Command-center widgets for skills, routines, artifacts, run status, and second brain.
+- Binding reference-derived design system, no permanent sidebar, and migration of every current page.
+- A data-backed Markdown knowledge globe with reviewed artifacts on its outer ring and an accessible list/tree equivalent.
+- New artifacts generated as constrained Next.js/React component packages using the Voidra design-system SDK.
+- Deterministic security checks plus an independent security-review agent for every artifact digest before enablement.
+- Version/workspace-scoped capability grants for filesystem and MCP access through a typed broker; no ambient bridge.
 - Unit, integration, production-built Electron Playwright, adversarial security, and opt-in real CLI acceptance.
 
 ### Should have
@@ -170,13 +194,16 @@ Dependencies are real gates, not a requirement to serialize unrelated design wor
 - Excalidraw-style landing pad, creator metrics, and user-authored widget templates.
 - Optional Syncthing documentation for user-managed file sync, without making it a Voidra trust or correctness dependency.
 - Connector recommendation assistant that proposes official sources before community adapters.
+- User-authored artifact templates after the same build, review, and capability gates.
 
 ### Will not have in V2
 
 - A cloud/VPS runtime that continues while the Mac sleeps.
 - Silent submission to Claude/Codex, automatic permission bypass, or unreviewed canonical writes.
 - Automatic installation of community connectors, CLIs, skill scripts, or dependencies.
-- A general Node/React plugin executing in the privileged Electron renderer.
+- A general Node/React plugin executing in the privileged Electron renderer, arbitrary NPM dependencies in generated artifacts, or server components supplied by artifacts.
+- Newly generated standalone HTML artifacts. Existing HTML remains a quarantined/read-only legacy format until converted or archived.
+- Security approval based only on an LLM verdict; deterministic checks and runtime isolation remain mandatory.
 - Claims that a fixture test proves live provider, macOS permission, network, signing, or subscription behavior.
 
 ## Delivery checkpoints
@@ -185,8 +212,11 @@ Dependencies are real gates, not a requirement to serialize unrelated design wor
 2. **Local agent runners:** V2-02; attended Claude/Codex runs produce reports and staged diffs.
 3. **Repeatable work:** V2-03; selected headless runs can be scheduled while awake and produce indexed artifacts.
 4. **Connected workspace:** V2-04; connectors and micro apps expose normalized data without expanding renderer privilege.
-5. **Command center:** V2-05; the video-inspired experience becomes the default V2 home behind a reversible feature flag.
-6. **Release candidate:** V2-06; migration, scale, security, real CLI, packaged, and remaining selected V1 gates have evidence.
+5. **Prototype learning:** V2-05; retain contracts and discard the old visual direction.
+6. **Visual reset:** V2-06 and V2-07; the new reference-derived system governs the command center and every deep page, with no permanent sidebar.
+7. **Living second brain:** V2-08; the center globe is backed by Markdown relationships and the outer ring by reviewed artifacts.
+8. **Component artifacts:** V2-09 and V2-10; artifacts are design-system-native components with digest-bound review and least-privilege capabilities.
+9. **Release candidate:** V2-11; migration, fidelity, scale, artifact security, real CLI, packaged, and remaining selected V1 gates have evidence.
 
 Story points are relative (1/2/3/5/8). No story may be 13 points or larger; split it first. Dates must not be inferred until team capacity and V2-00 measurements establish velocity.
 
@@ -207,7 +237,8 @@ Use `Backlog → Ready → In Progress → Review → Evidence → Done`.
 
 - Use fixture CLI executables that emit valid, partial, malformed, oversized, delayed, and contradictory Claude/Codex streams.
 - Exercise real child processes without network or credentials to prove stdin handling, sanitized environment, exit classification, timeout, cancellation, and descendant cleanup.
-- Use real temporary SQLite/files for migrations, bundle versions, routers, runs, artifact manifests, and layouts.
+- Use real temporary SQLite/files for migrations, bundle versions, routers, runs, artifact manifests, review verdicts, capability grants, and layouts.
+- Compile generated artifact fixtures with valid, forbidden-import, traversal, dependency-confusion, dynamic-code, oversized, and malicious capability cases; bind every verdict and grant to the artifact digest.
 - Test wrong-workspace IDs, revoked shared bases, changed source revisions, symlink/hardlink escapes, malicious project settings, unsafe widget payloads, and restart recovery.
 - Keep the existing domain branch-coverage floor and add explicit scenario gates; coverage percentages do not replace isolation and destructive-action tests.
 
@@ -231,13 +262,18 @@ The plan can begin with the provisional defaults below. These are not treated as
 
 | ID | Question | Provisional default | Gate |
 | --- | --- | --- | --- |
-| V2-Q01 | Should V2 become the default home immediately or remain opt-in until release? | Feature-flagged opt-in through V2-05; default only after V2-06 | V2-05/06 |
-| V2-Q02 | Which live calendar/email provider should supply the first real widgets? | Build provider-neutral contracts and fixtures; require a user choice before live acceptance | V2-04/06 |
+| V2-Q01 | Should V2 become the default home immediately or remain opt-in until release? | Feature-flagged through V2-10; default only after V2-11 | V2-07/11 |
+| V2-Q02 | Which live calendar/email provider should supply the first real widgets? | Build provider-neutral contracts and fixtures; require a user choice before live acceptance | V2-04/11 |
 | V2-Q03 | May an unattended headless run write back automatically? | Only a named trusted routine with an exact standing writeback grant; otherwise review | V2-02/03 |
 | V2-Q04 | May headless providers use the network or their own MCP configuration? | No; provider network for inference/auth only, with Chrome/MCP/custom hooks disabled unless separately reviewed | V2-02 |
 | V2-Q05 | Should compatible CLI sessions persist for resume? | One-shot/ephemeral by default; add resume only after revocation and ownership tests | V2-02/03 |
-| V2-Q06 | What corpus size should the second brain target? | Index 60,000 synthetic files; render/query progressively instead of loading a 60,000-node DOM/SVG | V2-01/06 |
-| V2-Q07 | Can custom micro apps run JavaScript? | Yes, inside the existing isolated artifact boundary with a declared capability manifest and no Electron bridge | V2-04 |
+| V2-Q06 | What corpus size should the second brain target? | Index 60,000 synthetic files; render/query progressively instead of loading a 60,000-node DOM/SVG | V2-01/08/11 |
+| V2-Q07 | Can custom micro apps run JavaScript? | Yes, but migrate them to the reviewed component-artifact boundary; no direct Electron/Node bridge | V2-04/09/10 |
+| V2-Q08 | How exact should the visual clone be? | High fidelity for composition, density, hierarchy, motion, and interaction; original Voidra brand/content/assets and no copied source code | V2-06/07 |
+| V2-Q09 | May generated artifacts include third-party packages? | No arbitrary packages in V2; imports are limited to React and the pinned Voidra artifact SDK allowlist | V2-09 |
+| V2-Q10 | May security approval grant capabilities automatically? | No; review establishes code eligibility, while users/standing policy separately grant each capability | V2-10 |
+| V2-Q11 | Can a security finding be overridden? | Low/medium may be explicitly accepted with a logged rationale; high/critical remains blocked until a new digest passes | V2-10 |
+| V2-Q12 | How are legacy HTML artifacts handled? | Read-only legacy preview behind its existing isolation; no new creation, and conversion produces a new reviewed component version | V2-09/10 |
 
 ## Definition of ready
 
@@ -254,4 +290,4 @@ A V2 phase is done only when:
 - Any provider/native/live claim links to evidence from that real boundary.
 - Feature flags support safe rollback without downgrading or deleting canonical user data.
 
-V2 as a whole is complete only after V2-06 and the selected remaining V1 live gates pass. A polished dashboard by itself is not completion.
+V2 as a whole is complete only after V2-11 and the selected remaining V1 live gates pass. A polished dashboard, an agent-approved artifact, or a fixture-only provider result by itself is not completion.

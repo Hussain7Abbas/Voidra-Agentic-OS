@@ -1,8 +1,8 @@
 # V2-05 — Visual command center
 
-[V2 index](main.md) · Previous: [V2-04](phase-04-apps-microapps.md) · Next: [V2-06](phase-06-hardening-release.md)
+[V2 index](main.md) · Previous: [V2-04](phase-04-apps-microapps.md) · Next: [V2-06](phase-06-design-system-reset.md)
 
-Implementation status (2026-09-20): **in progress**. The initial Today route is now a full-window surface with no V1 sidebar or top bar. It provides the reference-inspired dark/orange visual hierarchy, compact header navigation, workspace switching, responsive ARMS constellation, live V1-backed skills/routines/tasks/runs/knowledge/artifact summaries, runtime diagnostics, workspace-safe refresh cancellation, and reduced-motion-aware CSS animation. Artifact summaries use the side-effect-free artifact API rather than creating or loading browser tabs. Unavailable connectors retain honest empty states. The legacy shell remains only on V1 deep-editing routes while they await V2 redesign. Layout editing/persistence, a complete widget registry, global search, accessible list mode, artifact lineage, bounded interactive graph exploration, V2 run providers, and the phase exit criteria remain pending.
+Implementation status (2026-09-20): **prototype slice implemented; phase incomplete and visual direction superseded**. The initial Today route proved workspace-safe V1 data composition, refresh cancellation, honest empty states, and a full-window route without the V1 shell. It does not meet the newly approved fidelity bar and must not become the basis for polishing the old design. V2-06 defines the replacement design system, V2-07 migrates all current pages, and V2-08 replaces the approximate constellation with the real Markdown knowledge globe and artifact ring. Preserve useful service/view-model work; freely replace its markup, CSS, layout, and motion.
 
 ## Outcome
 
@@ -68,7 +68,7 @@ The artifact ring may be a radial view, but it is backed by the same catalog que
 - Run cards stream normalized events without rendering raw provider HTML/ANSI.
 - Stop All is device-wide, visually distinct, and confirms scope when effects are pending; it does not erase journals.
 - Search and command results use stable IDs and revalidate access when opened.
-- The current V1 routes remain accessible for deep editing; the dashboard is a command center, not a replacement for full editors/settings.
+- The current V1 routes remain accessible only during migration. V2-07 redesigns them under the same no-sidebar system; the command center does not eliminate full editors/settings, but those destinations must no longer fall back to the old visual shell at release.
 
 ## Unit and integration tests
 
@@ -91,7 +91,7 @@ The artifact ring may be a radial view, but it is backed by the same catalog que
 
 ## Visual acceptance
 
-Capture deterministic screenshots for default, dense, empty, offline, active-run, and narrow layouts. Compare hierarchy and information coverage with the referenced screenshot while retaining Voidra's own identity. Acceptance is based on usability, accessibility, and the planned content—not pixel matching or reuse of source branding/assets.
+Capture deterministic screenshots for default, dense, empty, offline, active-run, and narrow layouts. Compare them against the frame matrix in [`research-video-ui.md`](research-video-ui.md) and the rules in [`design-system.md`](design-system.md). Acceptance uses measured composition, density, hierarchy, motion, interaction, and accessibility while retaining Voidra's own identity and original assets.
 
 ## Exit criteria
 

@@ -4,7 +4,7 @@
 
 ## Outcome
 
-Make headless providers useful as repeatable local routines. Skills can be launched from a deck or awake-only schedule with explicit provider/model/effort/access/limits. Every run has one observable timeline and produces cataloged reports, files, or HTML artifacts with provenance back to its skill and inputs.
+Make headless providers useful as repeatable local routines. Skills can be launched from a deck or awake-only schedule with explicit provider/model/effort/access/limits. Every run has one observable timeline and produces cataloged reports, files, or staged component-artifact source packages with provenance back to its skill and inputs. Existing HTML bundles remain catalogable legacy inputs but are not the V2 generation target.
 
 ## Routine V2 contract
 
@@ -29,7 +29,7 @@ Editing a routine creates a new version. Claimed occurrences and active runs ret
 | V2-03-03: Dispatch awake-only headless schedules | 8 | V1 P07, V2-03-01 | Given due, missed, duplicate, sleeping, quit, or unavailable-provider occurrences, when scheduler recovery runs, then each occurrence follows its explicit policy and is never double-submitted |
 | V2-03-04: Govern resources and concurrency | 5 | V2-02 broker | Given multiple workspaces and CPU/memory/output pressure, when runs queue, then configured device/workspace limits, fair ordering, pause/cancel, and Stop All are enforced |
 | V2-03-05: Unify run timelines | 5 | V2-02 events | Given any execution mode, when a run progresses, then preparation, provider events, tool/writeback review, artifacts, usage, cancellation, and final state appear in one ordered journal |
-| V2-03-06: Catalog artifacts and reports | 8 | V1 P02/P08, V2-03-05 | Given text, Markdown, image, PDF, HTML bundle, directory, or unknown output, when registered, then safe metadata, digest, lineage, preview policy, tags, and owning workspace persist |
+| V2-03-06: Catalog artifacts and reports | 8 | V1 P02/P08, V2-03-05 | Given text, Markdown, image, PDF, staged component package, legacy HTML bundle, directory, or unknown output, when registered, then safe metadata, digest, lineage, preview/review state, tags, and owning workspace persist |
 | V2-03-07: Search and reuse outputs | 5 | V2-03-06 | Given prior artifacts, when users filter by project/tag/type/date/skill/provider/run text, then authorized matches open or can be selected as a new run input without implicit execution |
 | V2-03-08: Upgrade Plan the Day | 5 | V2-03-01/03 | Given local/manual/OpenRouter/Claude/Codex modes, when Plan the Day runs, then it uses the same sourced plan contract and never modifies a calendar without separate reviewed connector action |
 
@@ -47,9 +47,9 @@ Initial policy:
 
 The catalog stores metadata and a pointer to canonical workspace output or retained run output; it does not duplicate large content by default.
 
-Required fields: artifact ID, workspace ID, run ID, routine/skill version, provider/executable version, path or retained object, content type, byte size, digest, title, tags, created/updated time, preview state, source context digest, parent artifact IDs, and retention state.
+Required fields: artifact ID, workspace ID, run ID, routine/skill version, provider/executable version, path or retained object, content type, byte size, source/bundle digest where applicable, title, tags, created/updated time, preview state, security-review state, source context digest, parent artifact IDs, and retention state.
 
-Artifact code is untrusted. HTML continues through the isolated V1 preview. PDFs/images use safe viewers. Unknown/binary types never execute. Deleting a catalog entry does not silently delete the source file; deleting the source is a separate reviewed operation.
+Artifact code is untrusted. Staged component packages remain quarantined for V2-09/V2-10. Legacy HTML continues only through the isolated V1 read-only preview. PDFs/images use safe viewers. Unknown/binary types never execute. Deleting a catalog entry does not silently delete the source file; deleting the source is a separate reviewed operation.
 
 ## Retry and resume rules
 
@@ -63,7 +63,7 @@ Artifact code is untrusted. HTML continues through the isolated V1 preview. PDFs
 - Migrate V1 routines/schedules and compare dispatch snapshots byte-for-byte for retained modes.
 - Fake clocks cover time zones, DST gaps/duplicates, long sleep, quit/restart, disabled schedules, and duplicate ticks for both headless providers.
 - Queue tests cover fairness, pressure, provider unavailability, workspace close, grant revocation, and Stop All.
-- Artifact sniffing ignores misleading extensions, checks traversal/symlinks, handles duplicate digests, unavailable files, revisions, and malicious HTML.
+- Artifact sniffing ignores misleading extensions, checks traversal/symlinks, handles duplicate digests, unavailable files, revisions, malicious component packages, and legacy malicious HTML.
 - Search and selection enforce workspace/shared-base authorization and never index redacted journals as ordinary user knowledge.
 
 ## Playwright Electron
@@ -71,7 +71,7 @@ Artifact code is untrusted. HTML continues through the isolated V1 preview. PDFs
 1. Pin four copies of a skill to manual, OpenRouter fixture, Claude fixture, and Codex fixture; launch each and inspect the unified timeline.
 2. Schedule Claude and Codex fixture routines at the same time; verify queue order, no duplicate occurrence, and correct workspace after switching the visible workspace.
 3. Exercise skip, run-once, and review missed policies through service restart.
-4. Produce Markdown, image, HTML bundle, and unknown binary artifacts; verify safe previews and metadata.
+4. Produce Markdown, image, staged component package, and unknown binary artifacts; import a legacy HTML bundle; verify quarantine/read-only preview and metadata.
 5. Search the artifact catalog, open lineage, select an artifact as a new skill input, and verify the original remains immutable.
 6. Stop All while one run is active and others are queued; all resulting states and descendant cleanup are visible.
 
