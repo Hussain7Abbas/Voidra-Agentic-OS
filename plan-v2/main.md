@@ -1,6 +1,6 @@
 # Voidra V2 — ARMS command-center plan
 
-Status: implementation started on 2026-09-20. The first reversible V2-05 presentation slice exists on the Today route, but it is now treated as a disposable prototype rather than the visual foundation. The approved direction is a full design-system reset, no permanent application sidebar, a high-fidelity recreation of the video's dashboard grammar, a real Markdown knowledge globe with an artifact ring, and reviewed Next.js component artifacts. None of V2-06–V2-11 is implemented. V1 automated implementation remains complete as recorded in [`plan/main.md`](../plan/main.md); its live/native/audio/network/signing acceptance items remain pending.
+Status: the implementable V2 plan is automated as of 2026-09-21. The old shell is removed; the reference-shaped command center, Markdown/ARMS globe and artifact orbit, skill/router/application/routine layers, supervised Claude/Codex runner, searchable output/run surfaces, and exact-digest component-artifact build/review/capability pipeline are implemented behind data-preserving feature flags. The automated 60,000-note and 10,000-artifact gates and unsigned Apple Silicon release-candidate path pass. Final distribution acceptance remains deliberately conditional on user-authorized real Claude/Codex and live-connector runs, physical native/audio/network checks, human visual/screen-reader review, and a Developer ID for signing/notarization. Exact evidence is maintained in [`implementation-evidence.md`](implementation-evidence.md).
 
 ## Goal
 
@@ -45,18 +45,18 @@ The referenced screenshot reinforces the target visual hierarchy: a dark edge-to
 - Official OpenAI documentation defines `codex exec` as the non-interactive mode, with JSONL events, read-only or workspace-write sandboxes, structured output, cancellation-friendly streams, saved CLI authentication, and resumable sessions in [Non-interactive mode](https://learn.chatgpt.com/docs/non-interactive-mode).
 - Local read-only inspection on 2026-09-20 found Claude Code `2.1.236` and Codex CLI `0.155.0-alpha.9.2`. These observations establish only the development machine baseline. V2 must negotiate capabilities at runtime instead of assuming those versions or flags forever.
 
-## V1 baseline and V2 gap
+## V1 baseline and implemented V2 delta
 
-| Area | V1 evidence | V2 gap |
+| Area | V1 evidence | Implemented V2 delta |
 | --- | --- | --- |
-| Desktop shell | Next.js/Electron deep routes plus an initial responsive, full-window command-center home are implemented | Deep routes still use the old sidebar/chrome; there is no binding reference-derived system, complete page migration, resizable layout editor, widget registry, saved list mode, or layout persistence |
-| Skills | Versioned Markdown instructions and routines are implemented | No bundle references/assets/scripts, import/export, or compatibility validation |
-| Memory | Private/shared Markdown, FTS, graph, tags, and editable memory exist | No router-file workflow, unified ARMS graph, or large-graph progressive exploration |
-| Execution | Manual Claude/Codex handoff and automatic OpenRouter runs exist | No supervised local `claude -p` or `codex exec` provider |
-| Routines | Awake-only schedules, Plan the Day, and run history exist | No headless CLI dispatch, skills deck, resource governor, or unified run timeline |
-| Applications | MCP catalog/custom servers, browser, Mac actions, voice, and remote boundaries exist | No normalized app-summary/widget contract or micro-app promotion flow |
-| Artifacts | Isolated HTML bundles and generated files can be opened | HTML is a legacy format; there is no reviewed Next.js component package, shared design-system SDK, capability manifest/broker, security verdict, cross-run catalog, lineage, or ring view |
-| Release | Automated V1 gate and Apple Silicon package exist | V1 live gates remain pending; V2 adds new CLI/security/performance gates |
+| Desktop shell | Next.js/Electron routes and V1 domain behavior | Edge-to-edge command bar and reference-derived canvas on every route; keyboard layout editor, global search, route/camera/scroll restoration, reduced motion, and data-preserving feature rollback |
+| Skills | Versioned Markdown instructions and routines | Portable resource bundles, inert script risk labels, deterministic fixtures, immutable snapshots, routers, and bounded context manifests |
+| Memory | Private/shared Markdown, FTS, graph, tags, and editable memory | Typed explainable ARMS graph, router workflow, bounded globe/list projections, saved camera, approved-artifact lineage orbit, and 60,000-file evidence |
+| Execution | Manual Claude/Codex handoff and automatic OpenRouter runs | Supervised direct-spawn Claude/Codex adapters, sanitized staging, journals, cancellation, reviewed writeback, and runtime capability discovery |
+| Routines | Awake-only schedules, Plan the Day, and run history | Versioned headless modes, fair device/workspace queueing, one cross-mode timeline, output catalog/reuse, and dashboard queue/output state |
+| Applications | MCP, browser, Mac, voice, and remote boundaries | Workspace application/widget registry, reviewed actions, declarative micro-app promotion, honest connector states, and server/schema pins |
+| Artifacts | Isolated legacy HTML and generated files | Constrained React packages, versioned design facade, disposable builder, deterministic plus independent semantic review, signed decisions, immutable rollback, isolated runtime, and typed FS/MCP broker |
+| Release | Automated V1 gate and Apple Silicon package | V2 unit/Electron/scale/package gates; live accounts, physical device boundaries, signing, and notarization remain separately pending |
 
 V2 is additive. It must migrate existing data in place, retain every V1 workflow, and remain able to disable all V2 features through feature flags during rollout.
 
@@ -155,7 +155,7 @@ Authentication remains the vendor CLI's responsibility. Voidra may invoke a docu
 | V2-02 | [Headless Claude and Codex runtime](phase-02-headless-claude-codex.md) | Safe, observable local CLI runs with staged outputs and normalized events | V2-00; V2-01 context contract |
 | V2-03 | [Routines, runs, and artifact lineage](phase-03-routines-runs-artifacts.md) | Headless-aware schedules, resource controls, run inspection, and a searchable artifact catalog | V2-01, V2-02 |
 | V2-04 | [Applications and micro apps](phase-04-apps-microapps.md) | Unified connectors, widget data sources, and isolated custom micro apps | V2-00; V1 P06/P08/P09 |
-| V2-05 | [Visual command center prototype](phase-05-command-center.md) | Retain service/view-model lessons while explicitly superseding its current visual shell | V2-01, V2-03, V2-04 |
+| V2-05 | [Visual command center](phase-05-command-center.md) | Operate the reference-shaped, no-sidebar Today command canvas and finish layout/search/accessibility controls | V2-01, V2-03, V2-04 |
 | V2-06 | [Design-system reset](phase-06-design-system-reset.md) | Make the reference-derived design rules binding and retire the old sidebar/chrome patterns | V2-05 research prototype |
 | V2-07 | [Whole-product redesign](phase-07-product-redesign.md) | Redesign every current page with the new shell, panels, motion, and transitions | V2-06 |
 | V2-08 | [Knowledge globe and artifact ring](phase-08-knowledge-globe-artifact-ring.md) | Build the real Markdown relationship globe with reviewed artifacts around it | V2-01, V2-03, V2-06 |

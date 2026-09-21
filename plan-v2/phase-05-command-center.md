@@ -2,7 +2,7 @@
 
 [V2 index](main.md) · Previous: [V2-04](phase-04-apps-microapps.md) · Next: [V2-06](phase-06-design-system-reset.md)
 
-Implementation status (2026-09-20): **prototype slice implemented; phase incomplete and visual direction superseded**. The initial Today route proved workspace-safe V1 data composition, refresh cancellation, honest empty states, and a full-window route without the V1 shell. It does not meet the newly approved fidelity bar and must not become the basis for polishing the old design. V2-06 defines the replacement design system, V2-07 migrates all current pages, and V2-08 replaces the approximate constellation with the real Markdown knowledge globe and artifact ring. Preserve useful service/view-model work; freely replace its markup, CSS, layout, and motion.
+Implementation status (2026-09-21): **automated implementation complete; human visual/screen-reader acceptance pending**. Today uses the no-sidebar black/orange command canvas, bilateral data rails, real bounded Markdown/ARMS globe, approved artifact orbit, keyboard layout editing, exact skill/routine/output deep links, queue/last-output state, interleaved cross-domain search, Stop All, 200% zoom coverage, reduced motion, and honest empty states.
 
 ## Outcome
 

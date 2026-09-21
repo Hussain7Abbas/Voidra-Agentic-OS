@@ -3,7 +3,7 @@
 	dev dev-web start \
 	build build-web build-desktop \
 	typecheck test test-watch coverage e2e verify audit ci \
-	package package-dir release-manifest smoke release open-package \
+	package package-dir release-manifest smoke release v2-release open-package \
 	clean clean-all
 
 ROOT := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
@@ -51,6 +51,7 @@ help:
 	@echo "  $(GREEN)release-manifest$(RESET)     Hash the package and record build/schema inputs"
 	@echo "  $(GREEN)smoke$(RESET)                Smoke-test the existing packaged application"
 	@echo "  $(GREEN)release$(RESET)              Package, then smoke-test the resulting application"
+	@echo "  $(GREEN)v2-release$(RESET)           Run V2 tests, 60k scale gate, package, manifest, and packaged smoke"
 	@echo "  $(GREEN)open-package$(RESET)         Open the existing packaged application on macOS"
 	@echo ""
 	@echo "$(BLUE)Cleanup$(RESET)"
@@ -126,6 +127,15 @@ smoke: require-pnpm
 release: require-pnpm
 	@$(MAKE) package
 	@$(MAKE) smoke
+
+v2-release: require-pnpm
+	@cd "$(ROOT)" && $(PNPM) typecheck
+	@cd "$(ROOT)" && $(PNPM) test:coverage
+	@cd "$(ROOT)" && $(PNPM) test:e2e
+	@cd "$(ROOT)" && $(PNPM) test:scale:v2
+	@cd "$(ROOT)" && $(PNPM) package:dir
+	@cd "$(ROOT)" && $(PNPM) release:manifest
+	@cd "$(ROOT)" && $(PNPM) smoke:package
 
 open-package:
 	@test "$$(uname -s)" = "Darwin" || (echo "$(YELLOW)open-package is available only on macOS.$(RESET)" && exit 1)

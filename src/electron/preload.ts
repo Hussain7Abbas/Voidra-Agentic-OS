@@ -50,6 +50,7 @@ const api: NonNullable<Window["voidra"]> = {
   },
   artifacts: {
     list: (workspaceId, workspaceRoot) => ipcRenderer.invoke(IPC_CHANNELS.artifactList, workspaceId, workspaceRoot),
+    search: (workspaceId, workspaceRoot, input) => ipcRenderer.invoke(IPC_CHANNELS.artifactSearch, workspaceId, workspaceRoot, input),
     create: (workspaceId, workspaceRoot, input) => ipcRenderer.invoke(IPC_CHANNELS.artifactCreate, workspaceId, workspaceRoot, input),
     read: (workspaceId, workspaceRoot, artifactId, path) => ipcRenderer.invoke(IPC_CHANNELS.artifactRead, workspaceId, workspaceRoot, artifactId, path),
     save: (workspaceId, workspaceRoot, artifactId, path, content, revision) => ipcRenderer.invoke(IPC_CHANNELS.artifactSave, workspaceId, workspaceRoot, artifactId, path, content, revision),
@@ -57,6 +58,14 @@ const api: NonNullable<Window["voidra"]> = {
     setBounds: (workspaceId, artifactId, bounds) => ipcRenderer.invoke(IPC_CHANNELS.artifactBounds, workspaceId, artifactId, bounds),
     hide: () => ipcRenderer.invoke(IPC_CHANNELS.artifactHide),
     export: (workspaceId, workspaceRoot, artifactId) => ipcRenderer.invoke(IPC_CHANNELS.artifactExport, workspaceId, workspaceRoot, artifactId),
+    review: (workspaceId, workspaceRoot, artifactId) => ipcRenderer.invoke(IPC_CHANNELS.artifactReview, workspaceId, workspaceRoot, artifactId),
+    rollback: (workspaceId, workspaceRoot, artifactId, sourceDigest) => ipcRenderer.invoke(IPC_CHANNELS.artifactRollback, workspaceId, workspaceRoot, artifactId, sourceDigest),
+    convertLegacy: (workspaceId, workspaceRoot, artifactId) => ipcRenderer.invoke(IPC_CHANNELS.artifactConvertLegacy, workspaceId, workspaceRoot, artifactId),
+    grant: (workspaceId, workspaceRoot, artifactId, capabilityId) => ipcRenderer.invoke(IPC_CHANNELS.artifactGrant, workspaceId, workspaceRoot, artifactId, capabilityId),
+    revoke: (workspaceId, workspaceRoot, artifactId, capabilityId) => ipcRenderer.invoke(IPC_CHANNELS.artifactRevoke, workspaceId, workspaceRoot, artifactId, capabilityId),
+    listStagedWrites: (workspaceId, workspaceRoot) => ipcRenderer.invoke(IPC_CHANNELS.artifactWriteList, workspaceId, workspaceRoot),
+    applyStagedWrite: (workspaceId, workspaceRoot, stagedWriteId) => ipcRenderer.invoke(IPC_CHANNELS.artifactWriteApply, workspaceId, workspaceRoot, stagedWriteId),
+    rejectStagedWrite: (workspaceId, workspaceRoot, stagedWriteId) => ipcRenderer.invoke(IPC_CHANNELS.artifactWriteReject, workspaceId, workspaceRoot, stagedWriteId),
   },
 };
 

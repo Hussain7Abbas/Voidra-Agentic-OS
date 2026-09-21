@@ -2,7 +2,7 @@
 
 [V2 index](main.md) · Previous: [V2-08](phase-08-knowledge-globe-artifact-ring.md) · Next: [V2-10](phase-10-artifact-security-review.md)
 
-Status: **planned**. Existing HTML artifacts remain legacy inputs; this document does not authorize executing generated TSX in the current renderer.
+Status (2026-09-21): **automated implementation complete**. Manifest-bound React packages compile from copied source in a disposable time/memory/input/output-bounded worker against pinned Voidra facades; exact-digest approval gates the sandboxed runtime. Immutable snapshots/rollback, edit invalidation, and non-executing guided legacy conversion are covered. The exact contract is [`artifact-authoring-contract.md`](artifact-authoring-contract.md).
 
 ## Outcome
 

@@ -2,7 +2,7 @@
 
 [V2 index](main.md) · Previous: [V2-09](phase-09-nextjs-artifact-runtime.md) · Next: [V2-11](phase-11-hardening-release.md)
 
-Status: **planned**. No artifact is considered approved merely because an AI created it, it compiled, or a security-review agent said it looked safe.
+Status (2026-09-21): **automated implementation complete; live semantic-model evidence pending**. Static/source/build/runtime policy is non-overridable; a separate credential-free reviewer and distinct prompt-injection-resistant semantic reviewer bind the exact inventory/digests. Schema validation, fail-closed inventory rules, signed/chained/expiring decisions, adversarial fixtures, grants, staged filesystem writeback, MCP server/schema pins, revocation, and per-call broker revalidation are implemented. Automated semantic evidence is explicitly labeled `test-fixture`; a production OpenRouter review remains account-dependent.
 
 ## Outcome
 

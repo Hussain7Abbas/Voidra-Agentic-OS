@@ -2,6 +2,8 @@
 
 [V2 index](main.md) · Previous: [V2-03](phase-03-routines-runs-artifacts.md) · Next: [V2-05](phase-05-command-center.md)
 
+Status (2026-09-21): **provider-neutral automated implementation complete; live provider pending**. The application/widget registry, freshness/error fixtures, reviewed actions, declarative micro-app registration and component-artifact promotion, built-in widget states, and safe recommendation catalog are implemented. No live account was selected or authorized, so V2-04-08 remains explicitly Pending.
+
 ## Outcome
 
 Implement the Applications layer of ARMS without turning the dashboard into a privileged plugin host. Existing MCP, browser, Mac-action, voice, and remote capabilities appear through a unified application registry. Approved connectors can supply normalized widget summaries and reviewed actions. V2-04 defines the micro-app data/capability contract; executable generated micro apps must use the V2-09 component format and pass V2-10 review rather than promoting HTML.

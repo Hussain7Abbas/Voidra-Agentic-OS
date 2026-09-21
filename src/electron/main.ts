@@ -3,7 +3,7 @@ import { mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "nod
 import { join, resolve } from "node:path";
 import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, nativeImage, Notification, safeStorage, Tray, WebContentsView } from "electron";
 import { IPC_CHANNELS, WORKSPACE_ID_EXAMPLE, type HostRequest, type ServiceRequest, type ServiceStateEvent } from "../shared/contracts";
-import type { BrowserAction } from "../shared/browser-contracts";
+import type { ArtifactSemanticReview, ArtifactState, BrowserAction } from "../shared/browser-contracts";
 import { installAppProtocol, registerAppScheme } from "./app-protocol";
 import { BrowserManager } from "./browser-manager";
 import { NativeAutomationHost } from "./native-automation";
@@ -93,7 +93,7 @@ function createWindow() {
     minWidth: 860,
     minHeight: 620,
     title: "Voidra",
-    backgroundColor: "#090d15",
+    backgroundColor: "#050505",
     show: false,
     webPreferences: {
       preload: join(__dirname, "preload.cjs"),
@@ -261,6 +261,7 @@ function registerIpc() {
   ipcMain.handle(IPC_CHANNELS.browserResume, (event, workspaceId, tabId) => { assertTrustedSender(event.senderFrame?.url); return browserManager.resume(String(workspaceId), String(tabId)); });
   ipcMain.handle(IPC_CHANNELS.browserAction, (event, workspaceId, tabId, taskId, documentId, action) => { assertTrustedSender(event.senderFrame?.url); return browserManager.action(String(workspaceId), String(tabId), String(taskId), String(documentId), action); });
   ipcMain.handle(IPC_CHANNELS.artifactList, (event, workspaceId, workspaceRoot) => { const value = browserArgs(event, workspaceId, workspaceRoot); return browserManager.listArtifacts(value.workspaceId, value.workspaceRoot); });
+  ipcMain.handle(IPC_CHANNELS.artifactSearch, (event, workspaceId, workspaceRoot, input) => { const value = browserArgs(event, workspaceId, workspaceRoot); const query = input && typeof input === "object" && !Array.isArray(input) ? input as Record<string, unknown> : {}; return browserManager.searchArtifacts(value.workspaceId, value.workspaceRoot, { query: typeof query.query === "string" ? query.query.slice(0, 1000) : "", kind: query.kind === "component" || query.kind === "legacy-html" ? query.kind : null, reviewState: ["draft", "legacy", "quarantined", "approved", "blocked", "superseded"].includes(String(query.reviewState)) ? query.reviewState as ArtifactState["reviewState"] : null, limit: typeof query.limit === "number" ? query.limit : undefined }); });
   ipcMain.handle(IPC_CHANNELS.artifactCreate, (event, workspaceId, workspaceRoot, input) => { const value = browserArgs(event, workspaceId, workspaceRoot); return browserManager.createArtifact(value.workspaceId, value.workspaceRoot, input); });
   ipcMain.handle(IPC_CHANNELS.artifactRead, (event, workspaceId, workspaceRoot, artifactId, path) => { const value = browserArgs(event, workspaceId, workspaceRoot); return browserManager.readArtifact(value.workspaceId, value.workspaceRoot, String(artifactId), String(path)); });
   ipcMain.handle(IPC_CHANNELS.artifactSave, (event, workspaceId, workspaceRoot, artifactId, path, content, revision) => { const value = browserArgs(event, workspaceId, workspaceRoot); return browserManager.saveArtifact(value.workspaceId, value.workspaceRoot, String(artifactId), String(path), String(content), String(revision)); });
@@ -268,6 +269,19 @@ function registerIpc() {
   ipcMain.handle(IPC_CHANNELS.artifactBounds, (event, workspaceId, artifactId, bounds) => { assertTrustedSender(event.senderFrame?.url); return browserManager.setArtifactBounds(String(workspaceId), String(artifactId), bounds); });
   ipcMain.handle(IPC_CHANNELS.artifactHide, (event) => { assertTrustedSender(event.senderFrame?.url); return browserManager.hide(); });
   ipcMain.handle(IPC_CHANNELS.artifactExport, (event, workspaceId, workspaceRoot, artifactId) => { const value = browserArgs(event, workspaceId, workspaceRoot); return browserManager.exportArtifact(value.workspaceId, value.workspaceRoot, String(artifactId)); });
+  ipcMain.handle(IPC_CHANNELS.artifactReview, (event, workspaceId, workspaceRoot, artifactId) => { const value = browserArgs(event, workspaceId, workspaceRoot); return browserManager.reviewArtifact(value.workspaceId, value.workspaceRoot, String(artifactId)); });
+  ipcMain.handle(IPC_CHANNELS.artifactRollback, (event, workspaceId, workspaceRoot, artifactId, sourceDigest) => { const value = browserArgs(event, workspaceId, workspaceRoot); return browserManager.rollbackArtifact(value.workspaceId, value.workspaceRoot, String(artifactId), String(sourceDigest)); });
+  ipcMain.handle(IPC_CHANNELS.artifactConvertLegacy, (event, workspaceId, workspaceRoot, artifactId) => { const value = browserArgs(event, workspaceId, workspaceRoot); return browserManager.convertLegacyArtifact(value.workspaceId, value.workspaceRoot, String(artifactId)); });
+  ipcMain.handle(IPC_CHANNELS.artifactGrant, (event, workspaceId, workspaceRoot, artifactId, capabilityId) => { const value = browserArgs(event, workspaceId, workspaceRoot); return browserManager.grantArtifactCapability(value.workspaceId, value.workspaceRoot, String(artifactId), String(capabilityId)); });
+  ipcMain.handle(IPC_CHANNELS.artifactRevoke, (event, workspaceId, workspaceRoot, artifactId, capabilityId) => { const value = browserArgs(event, workspaceId, workspaceRoot); return browserManager.revokeArtifactCapability(value.workspaceId, value.workspaceRoot, String(artifactId), String(capabilityId)); });
+  ipcMain.handle(IPC_CHANNELS.artifactCapability, (event, identity, capabilityId, args) => {
+    if (!identity || typeof identity !== "object" || !args || typeof args !== "object" || Array.isArray(args)) throw new Error("Invalid artifact capability request.");
+    const value = identity as Record<string, unknown>;
+    return browserManager.artifactCapability(event.sender.id, String(value.workspaceId ?? ""), String(value.workspaceRoot ?? ""), String(value.artifactId ?? ""), String(value.sourceDigest ?? ""), String(capabilityId), args as Record<string, unknown>);
+  });
+  ipcMain.handle(IPC_CHANNELS.artifactWriteList, (event, workspaceId, workspaceRoot) => { const value = browserArgs(event, workspaceId, workspaceRoot); return browserManager.listArtifactWrites(value.workspaceId, value.workspaceRoot); });
+  ipcMain.handle(IPC_CHANNELS.artifactWriteApply, (event, workspaceId, workspaceRoot, stagedWriteId) => { const value = browserArgs(event, workspaceId, workspaceRoot); return browserManager.applyArtifactWrite(value.workspaceId, value.workspaceRoot, String(stagedWriteId)); });
+  ipcMain.handle(IPC_CHANNELS.artifactWriteReject, (event, workspaceId, workspaceRoot, stagedWriteId) => { const value = browserArgs(event, workspaceId, workspaceRoot); return browserManager.rejectArtifactWrite(value.workspaceId, value.workspaceRoot, String(stagedWriteId)); });
 
   if (isTestMode) {
     ipcMain.handle(IPC_CHANNELS.testCrash, (event) => {
@@ -340,7 +354,29 @@ app.whenReady().then(async () => {
   registerIpc();
   createTray();
   const window = createWindow();
-  browserManager = new BrowserManager(window, app.getPath("userData"), broadcastBrowserUpdate);
+  browserManager = new BrowserManager(window, app.getPath("userData"), broadcastBrowserUpdate, async (workspaceId, operation, scope, args) => {
+    const connectionId = String(scope.connectionId ?? "");
+    const name = String(scope.name ?? "");
+    const listing = await supervisor.request({ requestId: randomUUID(), workspaceId, sessionId: randomUUID(), operation: "mcp.list", payload: {} });
+    if (!listing.ok) throw new Error(listing.error.message);
+    const connections = (listing.data as { connections?: Array<Record<string, unknown>> }).connections ?? [];
+    const connection = connections.find((item) => item.id === connectionId);
+    if (!connection || connection.status !== "ready" || connection.fingerprint !== scope.serverFingerprint) throw new Error("The pinned MCP server identity changed or is unavailable; suspend this artifact grant and review it again.");
+    const capabilities = connection.capabilities as { tools?: Array<Record<string, unknown>>; resources?: Array<Record<string, unknown>> } | undefined;
+    const current = operation === "mcp.callTool" ? capabilities?.tools?.find((item) => item.name === name) : capabilities?.resources?.find((item) => item.uri === name);
+    if (!current || current.schemaDigest !== scope.schemaDigest) throw new Error("The pinned MCP tool/resource schema changed; suspend this artifact grant and review it again.");
+    const request: ServiceRequest = operation === "mcp.callTool"
+      ? { requestId: randomUUID(), workspaceId, sessionId: randomUUID(), operation: "mcp.prepareTool", payload: { connectionId, name, arguments: args } }
+      : { requestId: randomUUID(), workspaceId, sessionId: randomUUID(), operation: "mcp.readResource", payload: { connectionId, uri: name } };
+    const response = await supervisor.request(request);
+    if (!response.ok) throw new Error(response.error.message);
+    return operation === "mcp.callTool" ? { operation, state: "awaiting-review", action: response.data } : { operation, state: "completed", result: response.data };
+  }, async (workspaceId, input) => {
+    const request: ServiceRequest = { requestId: randomUUID(), workspaceId, sessionId: randomUUID(), operation: "artifact.semanticReview", payload: input };
+    const response = await supervisor.request(request);
+    if (!response.ok) throw new Error(response.error.message);
+    return response.data as ArtifactSemanticReview;
+  });
   await browserManager.initialize();
   await supervisor.start();
   await writeSmokeMarkerWhenReady(window);

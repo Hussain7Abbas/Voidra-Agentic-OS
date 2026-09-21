@@ -2,7 +2,7 @@
 
 [V2 index](main.md) · Previous: [V2-05](phase-05-command-center.md) · Next: [V2-07](phase-07-product-redesign.md)
 
-Status: **planned; do not implement until this phase is accepted**.
+Status (2026-09-21): **automated implementation complete; manual fidelity review pending**. Versioned host/artifact tokens and primitives, squared telemetry modules, dense typography, hairline geometry, the no-sidebar command strip, route/focus/globe motion, reduced-motion behavior, 200% zoom coverage, and static removal of legacy shell/color dependencies are implemented. The removal ledger is [`legacy-design-removal-ledger.md`](legacy-design-removal-ledger.md).
 
 ## Outcome
 

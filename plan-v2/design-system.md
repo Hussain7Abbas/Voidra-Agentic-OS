@@ -2,7 +2,7 @@
 
 [V2 index](main.md) · Research basis: [Video UI research](research-video-ui.md)
 
-Status: **planned, not implemented**. These rules become binding for V2-06 onward. They intentionally retire the old sidebar, blue/mint application chrome, soft card dashboard, and decorative constellation. Exceptions require a written decision in `plan-v2/main.md`; individual pages and generated artifacts may not invent parallel visual systems.
+Status (2026-09-21): **binding and implemented in the host/artifact facades**. The shared no-sidebar shell, Today composition, versioned semantic tokens/primitives, motion/reduced-motion rules, real knowledge globe, deep routes, and component-artifact facade follow this system. Automated route, selector/token, keyboard, reduced-motion, and 200%-zoom checks pass; human screenshot/contrast/screen-reader acceptance remains separately recorded. These rules retire the old sidebar, blue/mint application chrome, soft card dashboard, and decorative constellation. Exceptions require a written decision in `plan-v2/main.md`; individual pages and generated artifacts may not invent parallel visual systems.
 
 ## Principles
 

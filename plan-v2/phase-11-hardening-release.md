@@ -2,7 +2,7 @@
 
 [V2 index](main.md) · Previous: [V2-10](phase-10-artifact-security-review.md)
 
-Status: **planned**.
+Status (2026-09-21): **automated release candidate complete; external acceptance pending**. TypeScript, 30-file/161-test unit/integration with the 80% branch gate, 59/59 production Electron journeys, production build, unsigned arm64 packaging, packaged startup/disposable-builder/compiler/isolated-reviewer smoke, the bounded 60,000-file note/graph gate, and bounded 10,000-version catalog gate pass. The 60k cold-index scope is explicitly a roughly 3.2-minute background rebuild on this machine. Real authenticated Claude/Codex, a live semantic reviewer/connector, prolonged human soak, visual/screen-reader review, physical native/audio/network checks, Developer ID signing, and notarization remain Pending rather than Passed.
 
 ## Outcome
 

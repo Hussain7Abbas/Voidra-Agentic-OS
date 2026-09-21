@@ -20,6 +20,17 @@ afterEach(async () => {
 });
 
 describe("ServiceRuntime", () => {
+  it("disables V2 bundles without deleting their persisted data", async () => {
+    const { database, runtime } = await fixture(); database.setMetadata("retained-v2-sentinel", "keep");
+    const identity = { requestId: crypto.randomUUID(), workspaceId: WORKSPACE_ID_EXAMPLE, sessionId: crypto.randomUUID() };
+    const disabled = await runtime.handle({ ...identity, operation: "feature.set", payload: { feature: "catalog", enabled: false } });
+    expect(disabled).toMatchObject({ ok: true, data: { features: expect.arrayContaining([expect.objectContaining({ id: "catalog", enabled: false, source: "user-disabled" })]) } });
+    expect(await runtime.handle({ ...identity, requestId: crypto.randomUUID(), operation: "output.search", payload: { query: "", kind: null, provider: null, tags: [], limit: 10 } })).toMatchObject({ ok: false, error: { code: "WORKSPACE_CONFLICT", message: expect.stringContaining("persisted data was not deleted") } });
+    expect(database.getMetadata("retained-v2-sentinel")).toBe("keep");
+    const reenabled = await runtime.handle({ ...identity, requestId: crypto.randomUUID(), operation: "feature.set", payload: { feature: "catalog", enabled: true } });
+    expect(reenabled).toMatchObject({ ok: true, data: { features: expect.arrayContaining([expect.objectContaining({ id: "catalog", enabled: true })]) } }); database.close();
+  });
+
   it("correlates a ping and records its workspace", async () => {
     const { database, runtime } = await fixture();
     const response = await runtime.handle({

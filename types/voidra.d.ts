@@ -1,5 +1,5 @@
 import type { ServiceRequest, ServiceResponse, ServiceStateEvent } from "@/src/shared/contracts";
-import type { ArtifactSource, ArtifactState, BrowserAction, BrowserActionResult, BrowserBounds, BrowserTabState } from "@/src/shared/browser-contracts";
+import type { ArtifactSource, ArtifactStagedWrite, ArtifactState, BrowserAction, BrowserActionResult, BrowserBounds, BrowserTabState } from "@/src/shared/browser-contracts";
 
 declare global {
   interface Window {
@@ -45,6 +45,7 @@ declare global {
       };
       artifacts: {
         list(workspaceId: string, workspaceRoot: string): Promise<ArtifactState[]>;
+        search(workspaceId: string, workspaceRoot: string, input: { query?: string; kind?: "legacy-html" | "component" | null; reviewState?: ArtifactState["reviewState"] | null; limit?: number }): Promise<ArtifactState[]>;
         create(workspaceId: string, workspaceRoot: string, input: { name: string; runId?: string | null; sourceNoteIds?: string[] }): Promise<ArtifactState>;
         read(workspaceId: string, workspaceRoot: string, artifactId: string, path: string): Promise<ArtifactSource>;
         save(workspaceId: string, workspaceRoot: string, artifactId: string, path: string, content: string, revision: string): Promise<ArtifactState>;
@@ -52,6 +53,14 @@ declare global {
         setBounds(workspaceId: string, artifactId: string, bounds: BrowserBounds): Promise<void>;
         hide(): Promise<void>;
         export(workspaceId: string, workspaceRoot: string, artifactId: string): Promise<{ path: string; url: string }>;
+        review(workspaceId: string, workspaceRoot: string, artifactId: string): Promise<ArtifactState>;
+        rollback(workspaceId: string, workspaceRoot: string, artifactId: string, sourceDigest: string): Promise<ArtifactState>;
+        convertLegacy(workspaceId: string, workspaceRoot: string, artifactId: string): Promise<ArtifactState>;
+        grant(workspaceId: string, workspaceRoot: string, artifactId: string, capabilityId: string): Promise<ArtifactState>;
+        revoke(workspaceId: string, workspaceRoot: string, artifactId: string, capabilityId: string): Promise<ArtifactState>;
+        listStagedWrites(workspaceId: string, workspaceRoot: string): Promise<ArtifactStagedWrite[]>;
+        applyStagedWrite(workspaceId: string, workspaceRoot: string, stagedWriteId: string): Promise<ArtifactStagedWrite>;
+        rejectStagedWrite(workspaceId: string, workspaceRoot: string, stagedWriteId: string): Promise<ArtifactStagedWrite>;
       };
       diagnostics?: {
         simulateServiceCrash(): Promise<void>;

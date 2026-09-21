@@ -2,6 +2,8 @@
 
 [V2 index](main.md) · Next: [V2-01](phase-01-skills-router-memory.md)
 
+Status (2026-09-21): **automated implementation complete**. Populated v1-to-v3 migration with mode-0600 backup, integrity refusal, interruption rollback, feature rollback/data retention, CLI fingerprint discovery, sanitized staging, process/output limits, and accessible no-sidebar contracts have fixture coverage. External runtime acceptance is tracked in V2-11.
+
 ## Outcome
 
 Freeze the verified V1 baseline before changing persisted data or execution behavior. Define additive V2 contracts, a reversible migration, the child-process threat model, and runtime capability discovery for installed Claude Code and Codex CLIs.
@@ -94,4 +96,3 @@ The selected design must:
 - The staged-workspace strategy has measured evidence and no known canonical-write path.
 - Provider capability discovery is deterministic, credential-safe, and makes no inference call.
 - An ADR records why V2 remains awake-only and why CLI danger/bypass modes are excluded.
-

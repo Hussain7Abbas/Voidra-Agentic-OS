@@ -44,6 +44,7 @@ function json(value: unknown) { return `${JSON.stringify(value, null, 2)}\n`; }
 function emptyCapabilities() { return { tools: [], resources: [], prompts: [] } satisfies z.infer<typeof capabilitySchema>; }
 function cloneRecords(value: unknown[]) { return JSON.parse(JSON.stringify(value)) as Array<Record<string, unknown>>; }
 function capabilityHash(value: unknown) { return createHash("sha256").update(JSON.stringify(value)).digest("hex"); }
+function serverFingerprint(connection: Connection) { return capabilityHash({ id: connection.id, transport: connection.transport, command: connection.command, args: connection.args, cwd: connection.cwd, url: connection.url, serverInfo: connection.serverInfo, protocolVersion: connection.protocolVersion }); }
 function records(value: unknown) { return Array.isArray(value) ? value.filter((entry): entry is Record<string, unknown> => Boolean(entry) && typeof entry === "object") : []; }
 function declaredLaunchOptions(server: { packages?: Array<Record<string, unknown>>; remotes?: Array<Record<string, unknown>> }) {
   const local = (server.packages ?? []).flatMap((entry) => {
@@ -122,7 +123,10 @@ export class McpManager {
 
   async list(workspace: WorkspaceRecord) {
     const registry = await this.#registry(workspace);
-    return { connections: registry.connections, actions: registry.actions.slice().sort((a, b) => b.createdAt.localeCompare(a.createdAt)) };
+    return {
+      connections: registry.connections.map((connection) => ({ ...connection, fingerprint: serverFingerprint(connection), capabilities: { tools: connection.capabilities.tools.map((item) => ({ ...item, schemaDigest: capabilityHash(item) })), resources: connection.capabilities.resources.map((item) => ({ ...item, schemaDigest: capabilityHash(item) })), prompts: connection.capabilities.prompts.map((item) => ({ ...item, schemaDigest: capabilityHash(item) })) } })),
+      actions: registry.actions.slice().sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
+    };
   }
 
   async addStdio(workspace: WorkspaceRecord, input: { name: string; command: string; args: string[]; cwd?: string | null; env?: Record<string, string> }) {

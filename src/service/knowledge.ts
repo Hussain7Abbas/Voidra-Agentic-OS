@@ -122,8 +122,7 @@ export class KnowledgeManager {
   async search(workspace: WorkspaceRecord, query: string, tag?: string, delayMs = 0) {
     const results: Array<Record<string, unknown>> = [];
     const normalizedTag = tag?.replace(/^#/, "").toLocaleLowerCase();
-    const privateStore = await this.notes.forWorkspace(workspace);
-    for (const result of await privateStore.search(query, tag)) results.push({ ...result, baseId: "private", baseName: workspace.name, access: "write", source: "private" });
+    for (const result of await this.notes.run(workspace, (privateStore) => privateStore.search(query, tag))) results.push({ ...result, baseId: "private", baseName: workspace.name, access: "write", source: "private" });
     const attachments = this.database.listKnowledgeAttachments(workspace.id);
     for (const attachment of attachments) {
       if (!(await this.#isAvailable(attachment.canonicalPath, false))) continue;
@@ -142,7 +141,7 @@ export class KnowledgeManager {
 
   async read(workspace: WorkspaceRecord, baseId: string, documentId: string) {
     if (baseId === "private") {
-      const document = await (await this.notes.forWorkspace(workspace)).read(documentId);
+      const document = await this.notes.run(workspace, (privateStore) => privateStore.read(documentId));
       return { ...document, baseId, baseName: workspace.name, access: "write", source: "private" };
     }
     const attachment = this.#requireAttachment(workspace.id, baseId);
@@ -185,8 +184,7 @@ export class KnowledgeManager {
   }
 
   async graph(workspace: WorkspaceRecord, input: { focus?: { baseId: string; documentId: string }; depth?: number; tag?: string; filterOnly?: boolean }) {
-    const privateStore = await this.notes.forWorkspace(workspace);
-    const privateDocuments = (await privateStore.graphSnapshot()).map((document) => ({ ...document, baseId: "private", baseName: workspace.name, access: "write" as const }));
+    const privateDocuments = (await this.notes.run(workspace, (privateStore) => privateStore.graphSnapshot())).map((document) => ({ ...document, baseId: "private", baseName: workspace.name, access: "write" as const }));
     const sharedGroups = await Promise.all(this.database.listKnowledgeAttachments(workspace.id).map(async (attachment) => {
       if (!(await this.#isAvailable(attachment.canonicalPath, false))) return [];
       return (await this.#scan(attachment.id, attachment.canonicalPath)).map((document) => ({ ...document, baseName: attachment.name, access: attachment.access }));
@@ -201,24 +199,26 @@ export class KnowledgeManager {
       title: document.title,
       tags: document.tags,
       access: document.access,
+      revision: document.revision,
       highlighted: input.tag ? document.tags.some((tag) => tag.toLocaleLowerCase() === input.tag!.replace(/^#/, "").toLocaleLowerCase()) : false,
     }));
     const byBasePath = new Map(nodes.map((node) => [`${node.baseId}:${node.path.replace(/\.md$/i, "").toLocaleLowerCase()}`, node]));
+    const byDocumentId = new Map(nodes.map((node) => [`${node.baseId}:${node.documentId}`, node]));
     const byBaseName = new Map<string, GraphNodeLike[]>();
     type GraphNodeLike = typeof nodes[number];
     for (const node of nodes) {
       const keys = new Set([node.title.toLocaleLowerCase(), basename(node.path, extname(node.path)).toLocaleLowerCase()]);
-      for (const key of keys) byBaseName.set(`${node.baseId}:${key}`, [...(byBaseName.get(`${node.baseId}:${key}`) ?? []), node]);
+      for (const key of keys) { const mapKey = `${node.baseId}:${key}`; const candidates = byBaseName.get(mapKey); if (candidates) candidates.push(node); else byBaseName.set(mapKey, [node]); }
     }
     const baseByName = new Map(this.database.listKnowledgeAttachments(workspace.id).map((attachment) => [attachment.name.toLocaleLowerCase(), attachment.id]));
     baseByName.set(workspace.name.toLocaleLowerCase(), "private");
-    const edges: Array<{ id: string; source: string; target: string; status: string }> = [];
+    const edges: Array<{ id: string; source: string; target: string; status: string; type: string; reason: string; sourceRecord: string; revision: string; scope: string; inferred: boolean }> = [];
     for (const document of documents) {
       const source = `${document.baseId}:${document.id}`;
       for (const link of document.links as Array<ParsedLink & { resolvedId?: string | null; status?: string }>) {
         let targetNode;
         const separator = link.target.indexOf("::");
-        if (separator < 0 && document.baseId === "private" && link.resolvedId) targetNode = nodes.find((node) => node.baseId === "private" && node.documentId === link.resolvedId);
+        if (separator < 0 && document.baseId === "private" && link.resolvedId) targetNode = byDocumentId.get(`private:${link.resolvedId}`);
         else {
           const targetBaseId = separator >= 0 ? baseByName.get(link.target.slice(0, separator).toLocaleLowerCase()) : document.baseId;
           const targetPath = normalizeLinkTarget(separator >= 0 ? link.target.slice(separator + 2) : link.target);
@@ -230,7 +230,7 @@ export class KnowledgeManager {
             }
           }
         }
-        if (targetNode) edges.push({ id: `${source}->${targetNode.id}:${edges.length}`, source, target: targetNode.id, status: "resolved" });
+        if (targetNode) edges.push({ id: `${source}->${targetNode.id}:${edges.length}`, source, target: targetNode.id, status: "resolved", type: `${link.kind}-link`, reason: `${link.kind === "wiki" ? "Wiki" : "Markdown"} link from ${document.path} to ${targetNode.path}.`, sourceRecord: document.path, revision: document.revision, scope: document.baseId === "private" ? "workspace" : `shared:${document.baseId}`, inferred: false });
       }
     }
     let visibleNodes = input.filterOnly && input.tag ? nodes.filter(({ highlighted }) => highlighted) : nodes;

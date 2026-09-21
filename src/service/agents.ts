@@ -48,6 +48,7 @@ export class AgentTaskManager {
     callBrowserAction?: (workspace: WorkspaceRecord, taskId: string, payload: Record<string, unknown>) => Promise<Record<string, unknown>>;
     listAutomation?: (workspace: WorkspaceRecord) => Promise<{ roots: Array<{ id: string; name: string; path: string }>; native: Record<string, unknown> }>;
     callAutomationAction?: (workspace: WorkspaceRecord, payload: Record<string, unknown>) => Promise<Record<string, unknown>>;
+    registerOutput?: (workspace: WorkspaceRecord, input: { taskId: string; model: string; path: string; objective: string }) => Promise<unknown>;
     retryDelayMs?: number;
   } = {}) {}
 
@@ -264,6 +265,8 @@ export class AgentTaskManager {
     else if (tool.name === "write_file") {
       const content = String(args.content ?? "");
       await atomicWrite(absolute!, content);
+      try { await this.options.registerOutput?.(workspace, { taskId: task.id, model: task.model, path: relativePath, objective: task.objective }); }
+      catch (error) { this.#event(task, "artifact.catalog-failed", { path: relativePath, diagnostic: error instanceof Error ? error.message.slice(0, 500) : "Cataloging failed." }); }
       await this.options.afterToolEffect?.(task, tool);
       result = JSON.stringify({ path: relativePath, bytes: Buffer.byteLength(content), sha256: hash(content) });
     } else if (tool.name === "mcp_call") {

@@ -178,7 +178,7 @@ test("stores a remote bearer token securely and restores it after service restar
   await expect(window.getByLabel("MCP connections")).toContainText("Remote · ready");
 
   await window.evaluate(() => globalThis.window.voidra!.diagnostics!.simulateServiceCrash());
-  await expect(window.locator(".runtime-card")).toContainText("ready", { timeout: 8_000 });
+  await expect(window.getByTestId("service-status")).toContainText("ready", { timeout: 8_000 });
   await expect(window.getByLabel("MCP connections")).toContainText("Remote · stopped", { timeout: 8_000 });
   await window.getByLabel("MCP connections").getByRole("button", { name: "Connect" }).click();
   await expect(window.getByLabel("MCP connections")).toContainText("Remote · ready");

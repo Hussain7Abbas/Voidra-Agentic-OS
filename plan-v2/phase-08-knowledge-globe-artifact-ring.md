@@ -2,7 +2,7 @@
 
 [V2 index](main.md) · Previous: [V2-07](phase-07-product-redesign.md) · Next: [V2-09](phase-09-nextjs-artifact-runtime.md)
 
-Status: **planned**. The current constellation is a visual prototype and is not accepted as this phase's graph.
+Status (2026-09-21): **automated implementation and selected-scale gate complete**. Today renders deterministic Markdown/ARMS nodes and explainable typed edges, limits the visual neighborhood to 42 nodes/90 edges, supports search/focus/keyboard camera controls, persists per-workspace camera/list state, and shows only approved lineage-backed artifacts in deterministic groups. IPC pages remain bounded to 1,000 records (500 by default). Latest scale measurements are in [`implementation-evidence.md`](implementation-evidence.md); prolonged human soak remains a release-evidence boundary.
 
 ## Outcome
 

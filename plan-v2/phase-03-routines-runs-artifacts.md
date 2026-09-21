@@ -2,6 +2,8 @@
 
 [V2 index](main.md) · Previous: [V2-02](phase-02-headless-claude-codex.md) · Next: [V2-04](phase-04-apps-microapps.md)
 
+Status (2026-09-21): **automated implementation complete**. Manual/OpenRouter behavior is preserved; versioned headless routine modes, awake-only/missed-run dispatch, device/workspace resource governance, cross-mode timelines, Plan-the-Day parity, reviewed outputs, catalog search/reuse, and component/legacy lineage have automated coverage. Real provider inference remains V2-11 opt-in evidence.
+
 ## Outcome
 
 Make headless providers useful as repeatable local routines. Skills can be launched from a deck or awake-only schedule with explicit provider/model/effort/access/limits. Every run has one observable timeline and produces cataloged reports, files, or staged component-artifact source packages with provenance back to its skill and inputs. Existing HTML bundles remain catalogable legacy inputs but are not the V2 generation target.

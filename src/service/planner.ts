@@ -1,11 +1,13 @@
 import { createHash, randomUUID } from "node:crypto";
 import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { dirname, join, posix } from "node:path";
 import { z } from "zod";
 import type { WorkspaceRecord } from "./database";
 import type { AgentTaskManager } from "./agents";
 import type { ManualHandoffManager } from "./handoffs";
 import type { KnowledgeManager } from "./knowledge";
+import type { HeadlessRunner } from "./headless";
+import type { OutputCatalogManager } from "./output-catalog";
 import { DomainError } from "./workspaces";
 
 const datePattern = /^\d{4}-\d{2}-\d{2}$/;
@@ -126,10 +128,11 @@ function normalizeInput(input: PlanningInput) {
 
 export class PlannerScheduler {
   readonly #registries = new Map<string, Registry>();
+  readonly #registryLoads = new Map<string, Promise<Registry>>();
   readonly #saveQueues = new Map<string, Promise<void>>();
   #tickQueue: Promise<unknown> = Promise.resolve();
 
-  constructor(private readonly handoffs: ManualHandoffManager, private readonly agents: AgentTaskManager, private readonly knowledge: KnowledgeManager, private readonly notify: (workspaceId: string, payload: Record<string, unknown>) => void = () => undefined) {}
+  constructor(private readonly handoffs: ManualHandoffManager, private readonly agents: AgentTaskManager, private readonly knowledge: KnowledgeManager, private readonly notify: (workspaceId: string, payload: Record<string, unknown>) => void = () => undefined, private readonly headless?: HeadlessRunner, private readonly outputs?: OutputCatalogManager) {}
 
   async list(workspace: WorkspaceRecord) {
     const routine = await this.handoffs.ensurePlanTheDay(workspace);
@@ -215,6 +218,7 @@ export class PlannerScheduler {
     registry.plans.push(plan);
     await this.#save(workspace, registry);
     await atomicWrite(join(workspace.canonicalPath, "Daily Plans", `${input.date}.md`), markdown);
+    await this.outputs?.registerPath(workspace, { path: posix.join("Daily Plans", `${input.date}.md`), runId: plan.id, provider: "local-deterministic", title: `Plan for ${input.date}`, tags: ["plan-the-day", "local"] });
     return plan;
   }
 
@@ -228,6 +232,7 @@ export class PlannerScheduler {
     plan.updatedAt = new Date().toISOString();
     await this.#save(workspace, registry);
     await atomicWrite(join(workspace.canonicalPath, "Daily Plans", `${plan.date}.md`), markdown);
+    await this.outputs?.registerPath(workspace, { path: posix.join("Daily Plans", `${plan.date}.md`), runId: plan.id, provider: "local-deterministic", title: `Plan for ${plan.date}`, tags: ["plan-the-day", "local", "edited"] });
     return plan;
   }
 
@@ -335,9 +340,19 @@ export class PlannerScheduler {
       else {
         try {
           if (schedule.mode === "manual") {
-            const run = await this.handoffs.compile(workspace, { routineId: schedule.routineId!, objective: schedule.objective, targetPaths: [], sources: [], trigger: "scheduled" });
-            occurrence.state = "ready-to-copy";
-            occurrence.dispatchId = run.id;
+            const routine = (await this.handoffs.listRoutines(workspace)).find(({ id }) => id === schedule.routineId);
+            if (!routine) throw new DomainError("WORKSPACE_CONFLICT", "The scheduled routine no longer exists.");
+            if (routine.executionMode === "headless") {
+              if (!this.headless) throw new DomainError("AGENT_STATE_CONFLICT", "The supervised headless runner is unavailable.");
+              const context = await this.handoffs.compile(workspace, { routineId: schedule.routineId!, objective: schedule.objective, targetPaths: [], sources: [], trigger: "scheduled" }, { persist: false });
+              const run = await this.headless.start(workspace, { provider: routine.client, executablePath: routine.headlessExecutablePath!, prompt: context.prompt, model: routine.preferredModel === "use current client model" ? null : routine.preferredModel, accessMode: routine.headlessAccessMode, maxRuntimeMs: routine.headlessMaxRuntimeMs, provenance: { routineId: routine.id, trigger: "scheduled", skillBundleDigest: context.skillSnapshot.bundleDigest!, contextManifestDigest: context.contextManifest!.digest } });
+              occurrence.state = "running";
+              occurrence.dispatchId = run.id;
+            } else {
+              const run = await this.handoffs.compile(workspace, { routineId: schedule.routineId!, objective: schedule.objective, targetPaths: [], sources: [], trigger: "scheduled" });
+              occurrence.state = "ready-to-copy";
+              occurrence.dispatchId = run.id;
+            }
           } else {
             const task = await this.agents.start(workspace, { objective: schedule.objective, model: schedule.model!, maxSteps: 8, maxTokens: 50_000, maxRuntimeMs: 300_000, targetPaths: [], sources: [] });
             occurrence.state = "running";
@@ -359,17 +374,28 @@ export class PlannerScheduler {
   async #syncRunStates(workspace: WorkspaceRecord, registry: Registry) {
     const active = registry.occurrences.filter(({ dispatchId }) => dispatchId).filter(({ state }) => !["completed", "cancelled", "interrupted", "failed", "skipped", "needs-review"].includes(state));
     if (!active.length) return;
-    const needsManual = active.some((occurrence) => registry.schedules.find(({ id }) => id === occurrence.scheduleId)?.mode === "manual");
+    const routines = await this.handoffs.listRoutines(workspace);
+    const isHeadlessOccurrence = (occurrence: (typeof active)[number]) => {
+      const schedule = registry.schedules.find(({ id }) => id === occurrence.scheduleId);
+      return schedule?.mode === "manual" && routines.find(({ id }) => id === schedule.routineId)?.executionMode === "headless";
+    };
+    const needsHeadless = active.some(isHeadlessOccurrence);
+    const needsManual = active.some((occurrence) => registry.schedules.find(({ id }) => id === occurrence.scheduleId)?.mode === "manual" && !isHeadlessOccurrence(occurrence));
     const needsAutomatic = active.some((occurrence) => registry.schedules.find(({ id }) => id === occurrence.scheduleId)?.mode === "automatic");
-    const [handoffRuns, agentRegistry] = await Promise.all([needsManual ? this.handoffs.listRuns(workspace) : Promise.resolve([]), needsAutomatic ? this.agents.list(workspace) : Promise.resolve({ tasks: [], grants: [] })]);
+    const [handoffRuns, agentRegistry, headlessRuns] = await Promise.all([needsManual ? this.handoffs.listRuns(workspace) : Promise.resolve([]), needsAutomatic ? this.agents.list(workspace) : Promise.resolve({ tasks: [], grants: [] }), needsHeadless && this.headless ? this.headless.list(workspace) : Promise.resolve([])]);
     let changed = false;
     for (const occurrence of active) {
       const schedule = registry.schedules.find(({ id }) => id === occurrence.scheduleId);
       if (!schedule) continue;
       let next = occurrence.state;
       if (schedule.mode === "manual") {
-        const run = handoffRuns.find(({ id }) => id === occurrence.dispatchId);
-        if (run) next = run.status === "draft" ? "claimed" : run.status;
+        if (isHeadlessOccurrence(occurrence)) {
+          const run = headlessRuns.find(({ id }) => id === occurrence.dispatchId);
+          if (run) next = run.status === "queued" || run.status === "running" || run.status === "cancelling" ? "running" : run.status;
+        } else {
+          const run = handoffRuns.find(({ id }) => id === occurrence.dispatchId);
+          if (run) next = run.status === "draft" ? "claimed" : run.status;
+        }
       } else {
         const task = agentRegistry.tasks.find(({ id }) => id === occurrence.dispatchId);
         if (task) next = task.status === "completed" ? "completed" : task.status === "cancelled" ? "cancelled" : task.status === "failed" ? "failed" : task.status === "interrupted" ? "interrupted" : "running";
@@ -384,15 +410,18 @@ export class PlannerScheduler {
   async #registry(workspace: WorkspaceRecord) {
     const cached = this.#registries.get(workspace.id);
     if (cached) return cached;
-    let registry: Registry;
-    try { registry = registrySchema.parse(JSON.parse(await readFile(this.#path(workspace), "utf8"))); }
-    catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw new DomainError("INCOMPATIBLE_SCHEMA", "Planner and schedule metadata requires recovery.");
-      registry = { schemaVersion: 1, tasks: [], plans: [], schedules: [], occurrences: [] };
-    }
-    this.#registries.set(workspace.id, registry);
-    await this.#save(workspace, registry);
-    return registry;
+    const pending = this.#registryLoads.get(workspace.id); if (pending) return pending;
+    const load = (async () => {
+      let registry: Registry;
+      try { registry = registrySchema.parse(JSON.parse(await readFile(this.#path(workspace), "utf8"))); }
+      catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw new DomainError("INCOMPATIBLE_SCHEMA", "Planner and schedule metadata requires recovery.");
+        registry = { schemaVersion: 1, tasks: [], plans: [], schedules: [], occurrences: [] };
+      }
+      this.#registries.set(workspace.id, registry); await this.#save(workspace, registry); return registry;
+    })();
+    this.#registryLoads.set(workspace.id, load);
+    try { return await load; } finally { this.#registryLoads.delete(workspace.id); }
   }
 
   async #save(workspace: WorkspaceRecord, registry: Registry) {

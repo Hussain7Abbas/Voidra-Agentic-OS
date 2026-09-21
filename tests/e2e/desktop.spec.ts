@@ -59,7 +59,7 @@ test("command center preserves the ARMS overview and respects reduced motion", a
   await expect(commandCenter).toBeVisible();
   await expect(window.locator(".sidebar")).toHaveCount(0);
   await expect(window.locator(".topbar")).toHaveCount(0);
-  await expect(commandCenter.getByRole("navigation", { name: "Primary navigation" })).toBeVisible();
+  await expect(window.getByRole("navigation", { name: "Primary navigation" })).toBeVisible();
   await expect(commandCenter.getByText("VOIDRA AGENTIC OS")).toBeVisible();
   await expect(commandCenter.locator(".cc-brain-toolbar").getByText("Second brain", { exact: true })).toBeVisible();
   await expect(commandCenter.locator(".cc-skills").getByText("Skills deck", { exact: true })).toBeVisible();
@@ -67,10 +67,20 @@ test("command center preserves the ARMS overview and respects reduced motion", a
   await expect(commandCenter.locator(".cc-artifact-title").getByText("Artifact ring", { exact: true })).toBeVisible();
   await expect(commandCenter.getByLabel("Search command center")).toBeVisible();
 
-  const core = commandCenter.locator(".cc-core");
-  await expect.poll(() => core.evaluate((element) => getComputedStyle(element).animationName)).toContain("cc-core-breathe");
+  const core = commandCenter.locator(".kg-cloud");
+  await expect.poll(() => core.evaluate((element) => getComputedStyle(element).animationName)).toContain("kg-cloud-drift");
   await window.emulateMedia({ reducedMotion: "reduce" });
   await expect.poll(() => core.evaluate((element) => getComputedStyle(element).animationName)).toBe("none");
+});
+
+test("persists keyboard layout edits, searches across domains, supports zoom, and rolls V2 UI back without deleting data", async () => {
+  const profile = join(temporaryRoot, "profile"); const work = join(temporaryRoot, "Work"); await mkdir(work); application = await launch(profile, [work]); let window = await application.firstWindow(); await createWorkspace(window, "Work");
+  await window.getByRole("link", { name: /Review and run/ }).first().click(); await expect(window).toHaveURL(/\/jobs\/\?entity=skill:/); await expect(window.getByLabel("Compile routine")).toHaveValue(/.+/); await window.getByRole("link", { name: "Today" }).click();
+  await window.getByRole("button", { name: "Edit dashboard layout" }).click(); await window.getByRole("button", { name: "Hide pulse" }).click(); await window.getByRole("button", { name: "Save layout" }).click(); await expect(window.locator(".cc-pulse-widget")).toBeHidden();
+  await window.keyboard.press("Meta+K"); const palette = window.getByRole("dialog", { name: "Command the workspace" }); await expect(palette).toBeVisible(); await palette.getByLabel("Search destinations").fill("Plan the Day"); await expect(palette).toContainText(/skill · workspace|routine · workspace/); await window.keyboard.press("Escape");
+  await application.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]?.webContents.setZoomFactor(2)); await expect(window.getByRole("navigation", { name: "Primary navigation" })).toBeVisible(); await expect(window.locator(".sidebar")).toHaveCount(0); await application.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]?.webContents.setZoomFactor(1));
+  await window.getByRole("link", { name: "Settings" }).click(); const flags = window.getByLabel("V2 feature rollback controls"); await flags.getByRole("checkbox", { name: /command-center/ }).click(); await expect(flags.getByRole("checkbox", { name: /command-center/ })).not.toBeChecked(); await window.getByRole("link", { name: "Today" }).click(); await expect(window.getByText("V2 dashboard rollback is active.")).toBeVisible(); expect(await readFile(join(work, ".voidra", "dashboard-layout.json"), "utf8")).toContain('"pulse"');
+  await window.getByRole("link", { name: "Settings" }).click(); const commandFlag = window.getByLabel("V2 feature rollback controls").getByRole("checkbox", { name: /command-center/ }); await commandFlag.click(); await expect(commandFlag).toBeChecked(); await quit(application); application = await launch(profile); window = await application.firstWindow(); await window.getByRole("link", { name: "Today" }).click(); await expect(window.getByRole("region", { name: "Work command center" })).toBeVisible(); await expect(window.locator(".cc-pulse-widget")).toBeHidden();
 });
 
 test("first launch creates two roots and restores selection and route", async () => {

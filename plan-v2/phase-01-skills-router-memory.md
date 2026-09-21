@@ -2,6 +2,8 @@
 
 [V2 index](main.md) · Previous: [V2-00](phase-00-baseline-contracts-migration.md) · Next: [V2-02](phase-02-headless-claude-codex.md)
 
+Status (2026-09-21): **automated implementation complete**. Bundle migration/snapshots, portable import/export, reference/asset/script/test resources, inert executable risk labels, deterministic fixture validation, router draft/review/apply, bounded context manifests, typed ARMS graph enrichment, and a 60,000-file bounded-query gate are implemented.
+
 ## Outcome
 
 Implement the bottom two ARMS layers: rich skill bundles and agent-oriented memory routing. Existing skills migrate without losing version pinning. Users can preview exactly which routers, rules, memories, notes, and bundle resources form a run's bounded context pack. The second-brain graph expands beyond notes while preserving source and workspace boundaries.

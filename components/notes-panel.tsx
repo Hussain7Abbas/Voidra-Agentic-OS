@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import CodeMirror from "@uiw/react-codemirror";
 import { markdown } from "@codemirror/lang-markdown";
 import DOMPurify from "dompurify";
@@ -47,6 +47,7 @@ export function NotesPanel({ workspaceId, request }: { workspaceId: string; requ
   const [indexState, setIndexState] = useState("idle");
   const [message, setMessage] = useState("");
   const [listAttempt, setListAttempt] = useState(0);
+  const deepLinkOpened = useRef(false);
   const preview = useMemo(() => renderMarkdown(editorContent), [editorContent]);
   const dirty = Boolean(current && editorContent !== current.content);
   const candidateDocuments = searchResults.length || query || tag ? searchResults : documents;
@@ -77,11 +78,20 @@ export function NotesPanel({ workspaceId, request }: { workspaceId: string; requ
   }, [request, workspaceId]);
 
   useEffect(() => {
+    deepLinkOpened.current = false;
     setCurrent(null);
     setEditorContent("");
     setSearchResults([]);
     void loadDocuments();
   }, [loadDocuments, workspaceId, listAttempt]);
+
+  useEffect(() => {
+    if (deepLinkOpened.current || !documents.length) return;
+    deepLinkOpened.current = true;
+    const entity = new URLSearchParams(window.location.search).get("entity") ?? "";
+    const [baseId, documentId] = entity.split(":", 2);
+    if (baseId === "private" && documents.some(({ id }) => id === documentId)) void openDocument(documentId);
+  }, [documents, openDocument]);
 
   useEffect(() => {
     const timer = window.setInterval(async () => {

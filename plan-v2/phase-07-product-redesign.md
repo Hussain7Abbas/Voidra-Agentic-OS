@@ -2,7 +2,7 @@
 
 [V2 index](main.md) · Previous: [V2-06](phase-06-design-system-reset.md) · Next: [V2-08](phase-08-knowledge-globe-artifact-ring.md)
 
-Status: **planned; no page migration has been performed by this plan update**.
+Status (2026-09-21): **automated route migration complete; human visual/accessibility review pending**. Every route mounts the V2 command strip and reference-derived canvas; no shipped CSS or reachable DOM mounts the old sidebar/top bar/decorative orb. Domain behavior is preserved, deep links restore entity context, route scroll and globe camera state are workspace-scoped, and feature rollback retains canonical data.
 
 ## Outcome
 

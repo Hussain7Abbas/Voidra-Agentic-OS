@@ -2,6 +2,8 @@
 
 [V2 index](main.md) · Previous: [V2-01](phase-01-skills-router-memory.md) · Next: [V2-03](phase-03-routines-runs-artifacts.md)
 
+Status (2026-09-21): **automated implementation complete; live acceptance pending**. Exact executable discovery/fingerprinting, direct argument spawning, sanitized snapshots, read-only and staged-write profiles, bounded normalized journals, cancellation/process-group cleanup, restart interruption, exact diff review, stale-source denial, and durable reviewed writeback are implemented with fixture coverage. Real authenticated Claude and Codex inference/cancel/write smokes still require explicit user authorization and remain V2-11 evidence.
+
 ## Outcome
 
 Run installed Claude Code and Codex CLIs as first-class, supervised Voidra providers. A user can choose a skill, preview its exact context and execution profile, start a read-only or staged-write run, observe normalized events, cancel it, and review outputs without exposing another workspace or silently changing canonical files.
@@ -126,4 +128,3 @@ Record CLI version, macOS/build, profile, timestamps, exit state, artifact diges
 - Canonical workspaces change only through reviewed/standing-grant writeback.
 - Default profiles contain no danger/bypass flags and expose no arbitrary shell/network/MCP/browser capability.
 - One opt-in real Claude and one opt-in real Codex smoke are recorded before V2 release; absence keeps the corresponding provider marked unverified.
-

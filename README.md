@@ -1,6 +1,6 @@
 # Voidra
 
-Voidra is a local-first, workspace-scoped personal assistant for macOS. The repository follows the phased implementation plan in [`plan/main.md`](plan/main.md); P00–P06 are complete, and P07–P12 automated implementation plus the Apple Silicon release-candidate gate are complete. Recorded live/native/audio/network/signing acceptance remains pending.
+Voidra is a local-first, workspace-scoped personal assistant for macOS. V1 P00–P12 and the implementable V2 ARMS command-center plan have automated implementation and an Apple Silicon release-candidate path. Real authenticated Claude/Codex and connector checks, physical native/audio/network checks, human visual/screen-reader review, and signing/notarization remain explicitly pending. See [`plan-v2/implementation-evidence.md`](plan-v2/implementation-evidence.md).
 
 ## Foundation commands
 
@@ -13,6 +13,7 @@ make install-frozen
 make start
 make verify
 make release
+make v2-release
 ```
 
 The Makefile delegates to the package scripts below, which remain available directly:
@@ -33,6 +34,8 @@ pnpm smoke:package
 ```
 
 `make ci` composes type checking, coverage, every production-built Electron journey, packaging, release-manifest generation, and packaged smoke. The generated `release/release-manifest.json` records the arm64 artifact tree digest and locked build inputs.
+
+`make v2-release` adds the dedicated 60,000-note scale gate. It uses fixtures only and never consumes Claude, Codex, OpenRouter, ElevenLabs, OAuth, or signing credentials.
 
 The Electron suite uses temporary profiles and workspaces. It never needs personal accounts, OpenRouter credentials, or ElevenLabs credentials.
 

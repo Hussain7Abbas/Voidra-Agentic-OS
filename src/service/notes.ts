@@ -210,6 +210,19 @@ class NoteIndex {
     return (this.database.prepare("SELECT tag FROM note_tags WHERE document_id = ? ORDER BY tag").all(id) as Array<{ tag: string }>).map(({ tag }) => tag);
   }
 
+  graphSnapshot() {
+    const documents = this.list();
+    const links = this.database.prepare(`
+      SELECT source_id AS sourceId, target_text AS target, alias, anchor, kind, resolved_id AS resolvedId, status
+      FROM note_links ORDER BY source_id, start_offset
+    `).all() as Array<{ sourceId: string; target: string; alias: string | null; anchor: string | null; kind: string; resolvedId: string | null; status: string }>;
+    const tags = this.database.prepare("SELECT document_id AS documentId, tag FROM note_tags ORDER BY document_id, tag").all() as Array<{ documentId: string; tag: string }>;
+    const linksByDocument = new Map<string, typeof links>(); const tagsByDocument = new Map<string, string[]>();
+    for (const link of links) { const list = linksByDocument.get(link.sourceId); if (list) list.push(link); else linksByDocument.set(link.sourceId, [link]); }
+    for (const tag of tags) { const list = tagsByDocument.get(tag.documentId); if (list) list.push(tag.tag); else tagsByDocument.set(tag.documentId, [tag.tag]); }
+    return documents.map((document) => ({ ...document, links: linksByDocument.get(document.id) ?? [], tags: tagsByDocument.get(document.id) ?? [] }));
+  }
+
   resolvedOccurrences(id: string) {
     return this.database.prepare(`
       SELECT l.source_id AS sourceId, d.path, l.kind, l.start_offset AS startOffset, l.end_offset AS endOffset
@@ -419,7 +432,7 @@ export class NoteStore {
     await this.#ensureIndex();
     const index = new NoteIndex(this.#indexPath);
     try {
-      return index.list().map((document) => ({ ...document, links: index.linksFrom(document.id), tags: index.tagsFor(document.id) }));
+      return index.graphSnapshot();
     } finally { index.close(); }
   }
 
@@ -649,6 +662,16 @@ export class NoteCoordinator {
     for (const watcher of this.#watchers.values()) watcher.close();
     this.#timers.clear();
     this.#watchers.clear();
+    this.#stores.clear();
+    this.#queues.clear();
+  }
+
+  async shutdown() {
+    for (const timer of this.#timers.values()) clearTimeout(timer);
+    for (const watcher of this.#watchers.values()) watcher.close();
+    this.#timers.clear();
+    this.#watchers.clear();
+    await Promise.allSettled([...this.#queues.values()]);
     this.#stores.clear();
     this.#queues.clear();
   }

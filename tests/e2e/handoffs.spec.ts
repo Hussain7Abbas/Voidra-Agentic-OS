@@ -1,5 +1,5 @@
 import { _electron as electron, expect, test, type ElectronApplication, type Page } from "@playwright/test";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
@@ -109,6 +109,35 @@ test("scheduled manual preparation leaves the clipboard sentinel untouched", asy
   await expect(window.getByLabel("Handoff runs")).toContainText("ready-to-copy");
 });
 
+test("launches a pinned skill through a supervised Codex routine without creating a manual handoff", async () => {
+  const root = join(temporaryRoot, "Work");
+  const bin = join(temporaryRoot, "bin");
+  await Promise.all([mkdir(root), mkdir(bin)]);
+  const executable = join(bin, "codex");
+  await writeFile(executable, `#!/usr/bin/env node\nif(process.argv.includes("--version")){console.log("codex e2e fixture 1.0");process.exit(0)}let input="";process.stdin.on("data",c=>input+=c);process.stdin.on("end",()=>console.log(JSON.stringify({type:"result",prompt:input})))\n`);
+  await chmod(executable, 0o755);
+  application = await launch(join(temporaryRoot, "profile"), [root]);
+  const window = await application.firstWindow();
+  await onboard(window);
+  await window.getByRole("link", { name: "Jobs" }).click();
+  await window.getByRole("button", { name: "Create skill" }).click();
+  await window.getByLabel("Subscription client").selectOption("codex");
+  await window.getByLabel("Routine execution profile").selectOption("headless");
+  await window.getByLabel("Routine headless executable").fill(executable);
+  await window.getByLabel("Routine headless filesystem profile").selectOption("read-only");
+  await window.getByRole("button", { name: "Create routine" }).click();
+  await expect(window.getByLabel("Saved routines")).toContainText("headless · codex");
+  await window.getByRole("button", { name: "Run supervised headless" }).click();
+  await expect(window.getByRole("status").last()).toContainText("started from the pinned skill snapshot");
+  await expect(window.getByLabel("Headless run history")).toContainText("codex · completed", { timeout: 15_000 });
+  await expect(window.getByLabel("Unified run timeline")).toContainText("completed · Routine", { timeout: 10_000 });
+  const registry = JSON.parse(await readFile(join(root, ".voidra", "headless-runs.json"), "utf8")) as Array<{ status: string; provenance: { routineId: string; trigger: string; skillBundleDigest: string; contextManifestDigest: string } }>;
+  expect(registry[0]).toMatchObject({ status: "completed", provenance: { trigger: "manual" } });
+  expect(registry[0]!.provenance.skillBundleDigest).toMatch(/^[a-f0-9]{64}$/);
+  expect(registry[0]!.provenance.contextManifestDigest).toMatch(/^[a-f0-9]{64}$/);
+  expect(JSON.parse(await readFile(join(root, ".voidra", "handoffs.json"), "utf8"))).toMatchObject({ runs: [] });
+});
+
 test("reviews and applies a returned note while rejecting output traversal", async () => {
   const root = join(temporaryRoot, "Work");
   await mkdir(root);
@@ -127,6 +156,7 @@ test("reviews and applies a returned note while rejecting output traversal", asy
   await expect(window.getByLabel("Result change preview")).toContainText("(new file)");
   await window.getByRole("button", { name: "Apply reviewed output" }).click();
   await expect(window.getByRole("status")).toContainText("Reviewed output applied");
+  await expect(window.getByLabel("Cataloged outputs")).toContainText("markdown · manual-claude");
   expect(await readFile(join(root, "outputs", "daily.md"), "utf8")).toContain("Applied brief");
   await window.getByRole("button", { name: "Mark externally complete" }).click();
   await expect(window.getByLabel("Handoff runs")).toContainText("completed");

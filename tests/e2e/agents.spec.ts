@@ -175,7 +175,7 @@ test("restart after a committed write records an uncertain interruption and neve
   await window.getByRole("button", { name: "Run automatic task" }).click();
   await expect.poll(async () => readFile(join(root, "effect.md"), "utf8")).toBe("effect-3");
   await window.evaluate(() => globalThis.window.voidra!.diagnostics!.simulateServiceCrash());
-  await expect(window.locator(".runtime-card")).toContainText("ready", { timeout: 8_000 });
+  await expect(window.getByTestId("service-status")).toContainText("ready", { timeout: 8_000 });
   await expect(window.getByLabel("Automatic tasks")).toContainText("interrupted", { timeout: 8_000 });
   await window.getByLabel("Automatic tasks").getByRole("button").filter({ hasText: "interrupted" }).click();
   await expect(window.getByLabel("Automatic task output")).toContainText("reconcile it before resuming");
@@ -203,7 +203,7 @@ test("resumes a provider-only interruption after restart without permitting unce
   await window.getByRole("button", { name: "Run automatic task" }).click();
   await expect(window.getByLabel("Automatic task output")).toContainText("before restart");
   await window.evaluate(() => globalThis.window.voidra!.diagnostics!.simulateServiceCrash());
-  await expect(window.locator(".runtime-card")).toContainText("ready", { timeout: 8_000 });
+  await expect(window.getByTestId("service-status")).toContainText("ready", { timeout: 8_000 });
   await expect(window.getByLabel("Automatic tasks")).toContainText("interrupted", { timeout: 8_000 });
   await window.getByLabel("Automatic tasks").getByRole("button").filter({ hasText: "interrupted" }).click();
   await window.getByRole("button", { name: "Resume safely" }).click();

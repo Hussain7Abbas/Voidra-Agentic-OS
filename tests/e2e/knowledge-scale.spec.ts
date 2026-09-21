@@ -35,7 +35,7 @@ test("searches and graphs a 10,000-note attached shared base", async () => {
 
     const graphStarted = performance.now();
     await window.getByRole("link", { name: "Graph" }).click();
-    await expect(window.locator(".knowledge-graph")).toHaveAttribute("aria-label", /10000 notes/, { timeout: 120_000 });
+    await expect(window.locator(".knowledge-graph")).toHaveAttribute("aria-label", /10000 notes.*500 records loaded/, { timeout: 120_000 });
     const sharedGraphMs = Math.round(performance.now() - graphStarted);
 
     const searchStarted = performance.now();

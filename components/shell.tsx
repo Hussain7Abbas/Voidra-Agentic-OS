@@ -10,6 +10,7 @@ import { NotesPanel } from "@/components/notes-panel";
 import { HandoffPanel } from "@/components/handoff-panel";
 import { AgentPanel } from "@/components/agent-panel";
 import { McpPanel } from "@/components/mcp-panel";
+import { ApplicationsPanel } from "@/components/applications-panel";
 import { PlannerPanel } from "@/components/planner-panel";
 import { SchedulePanel } from "@/components/schedule-panel";
 import { BrowserPanel } from "@/components/browser-panel";
@@ -17,6 +18,11 @@ import { AutomationPanel } from "@/components/automation-panel";
 import { VoicePanel } from "@/components/voice-panel";
 import { RemotePanel } from "@/components/remote-panel";
 import { CommandCenter } from "@/components/command-center";
+import { SystemCanvasBar } from "@/components/system-canvas-bar";
+import { HeadlessPanel } from "@/components/headless-panel";
+import { RunTimelinePanel } from "@/components/run-timeline-panel";
+import { OutputCatalogPanel } from "@/components/output-catalog-panel";
+import { FeatureFlagsPanel } from "@/components/feature-flags-panel";
 
 const FALLBACK_WORKSPACE_ID = "018f0f73-89db-7a63-a1b2-5d46f598ed01";
 
@@ -36,18 +42,6 @@ type RegistryState = {
 };
 
 type ServiceStatus = "starting" | "ready" | "crashed" | "stopping" | "stopped";
-
-const navigation: Array<{ id: SectionId; label: string; symbol: string }> = [
-  { id: "today", label: "Today", symbol: "◫" },
-  { id: "assistant", label: "Assistant", symbol: "✦" },
-  { id: "notes", label: "Notes", symbol: "◇" },
-  { id: "graph", label: "Graph", symbol: "⌘" },
-  { id: "browser", label: "Browser", symbol: "◎" },
-  { id: "mac", label: "Mac", symbol: "⌁" },
-  { id: "jobs", label: "Jobs", symbol: "↻" },
-  { id: "remote", label: "Remote", symbol: "⌁" },
-  { id: "settings", label: "Settings", symbol: "⚙" },
-];
 
 const copy: Record<SectionId, { eyebrow: string; title: string; body: string }> = {
   today: { eyebrow: "Your local day", title: "Plan the day.", body: "Build an editable, sourced plan from this workspace's local tasks, availability, and explicitly supplied commitments." },
@@ -363,6 +357,8 @@ function SettingsPanel({ workspace, registry, request, reloadRegistry }: { works
         <small data-testid="elevenlabs-credential-status">{elevenLabsStatus?.configured ? "Configured" : elevenLabsStatus?.secureStorageAvailable ? "Not configured" : "Secure storage unavailable"}</small>
       </article>
       <McpPanel workspaceId={workspace.id} request={request} />
+      <ApplicationsPanel workspaceId={workspace.id} request={request} />
+      <FeatureFlagsPanel workspaceId={workspace.id} request={request} />
       {message && <p className="save-message" role="status">{message}</p>}
     </div>
   );
@@ -379,6 +375,7 @@ export function Shell({ section }: { section: SectionId }) {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [launcherOpen, setLauncherOpen] = useState(false);
   const [workspaceError, setWorkspaceError] = useState("");
+  const [features, setFeatures] = useState<Record<string, boolean>>({});
   const startupEvaluated = useRef(false);
   const sessionId = useMemo(() => crypto.randomUUID(), []);
   const selectedWorkspaceId = registry?.selectedWorkspaceId ?? registry?.defaultWorkspaceId ?? registry?.workspaces[0]?.id ?? null;
@@ -441,6 +438,31 @@ export function Shell({ section }: { section: SectionId }) {
     return () => window.removeEventListener("beforeunload", saveForRestart);
   }, [section]);
 
+  useEffect(() => {
+    if (!selectedWorkspaceId) return;
+    const key = `voidra.routeState.${selectedWorkspaceId}.${section}`;
+    let savedY = 0;
+    try {
+      const saved = JSON.parse(sessionStorage.getItem(key) ?? "null") as { scrollY?: number } | null;
+      savedY = Number.isFinite(saved?.scrollY) ? Math.max(0, Number(saved?.scrollY)) : 0;
+    } catch {
+      sessionStorage.removeItem(key);
+    }
+    const restore = window.requestAnimationFrame(() => window.scrollTo({ top: savedY, behavior: "auto" }));
+    let pending = 0;
+    const save = () => {
+      if (pending) window.cancelAnimationFrame(pending);
+      pending = window.requestAnimationFrame(() => sessionStorage.setItem(key, JSON.stringify({ scrollY: window.scrollY, updatedAt: new Date().toISOString() })));
+    };
+    window.addEventListener("scroll", save, { passive: true });
+    return () => {
+      window.cancelAnimationFrame(restore);
+      if (pending) window.cancelAnimationFrame(pending);
+      sessionStorage.setItem(key, JSON.stringify({ scrollY: window.scrollY, updatedAt: new Date().toISOString() }));
+      window.removeEventListener("scroll", save);
+    };
+  }, [section, selectedWorkspaceId]);
+
   const ping = useCallback(async () => {
     const started = performance.now();
     const result = await request("system.ping", {});
@@ -453,6 +475,13 @@ export function Shell({ section }: { section: SectionId }) {
       void loadRegistry();
     }
   }, [loadRegistry, ping, serviceStatus]);
+
+  useEffect(() => {
+    if (!selectedWorkspaceId || serviceStatus !== "ready") return;
+    let current = true;
+    void request("feature.list", {}, selectedWorkspaceId).then((result) => { if (current && result.ok) setFeatures(Object.fromEntries(((result.data.features as Array<{ id: string; enabled: boolean }>) ?? []).map((feature) => [feature.id, feature.enabled]))); });
+    return () => { current = false; };
+  }, [request, selectedWorkspaceId, serviceStatus]);
 
   const switchWorkspace = async (workspaceId: string) => {
     const result = await request("workspace.select", { workspaceId }, workspaceId);
@@ -480,33 +509,38 @@ export function Shell({ section }: { section: SectionId }) {
     setIsolationMessage(result && !result.hasBridge ? "Privileged bridge blocked" : "Isolation failed");
   };
 
-  return (
-    <main className={section === "today" ? "app-shell command-mode" : "app-shell"}>
-      {section !== "today" && <aside className="sidebar" aria-label="Primary navigation">
-        <div className="brand"><img src="/voidra-mark.svg" alt="" width="34" height="34" /><span>VOIDRA</span></div>
-        <div className="workspace-switcher">
-          <span className="workspace-dot" />
-          <label><small>Workspace</small><select aria-label="Current workspace" value={selectedWorkspaceId ?? ""} onChange={(event) => void switchWorkspace(event.target.value)} disabled={!registry?.workspaces.length}>
-            {!registry?.workspaces.length && <option value="">Not configured</option>}
-            {registry?.workspaces.map((workspace) => <option key={workspace.id} value={workspace.id}>{workspace.name}{workspace.available ? "" : " — unavailable"}</option>)}
-          </select></label>
-          <button aria-label="Add workspace" onClick={() => setDialogOpen(true)}>+</button>
-        </div>
-        <nav>{navigation.map((item) => <a key={item.id} href={routeFor(item.id)} className={item.id === section ? "active" : undefined} aria-current={item.id === section ? "page" : undefined}><span aria-hidden="true">{item.symbol}</span>{item.label}</a>)}</nav>
-        <div className="runtime-card"><span className={`status-light ${serviceStatus}`} /><div><strong>Local runtime</strong><small>{serviceStatus}{latency ? ` · ${latency} ms` : ""}</small></div></div>
-      </aside>}
+  const stopAll = async () => {
+    if (!selectedWorkspace) return;
+    const result = await request("agent.stopAll", {}, selectedWorkspace.id);
+    setWorkspaceError(result.ok ? `Stopped ${(result.data.stopped as string[]).length} active task(s).` : result.error.message);
+  };
 
-      <section className="workspace">
-        {section !== "today" && <header className="topbar"><span className="crumb">{selectedWorkspace?.name ?? "Setup"} / {content.title}</span><div className="top-actions"><button aria-label="Open command palette">⌘ K</button><span className="avatar">V</span></div></header>}
-        <div className={section === "today" ? "content content-command" : "content"}>
+  return (
+    <main className="app-shell v2-shell">
+      <SystemCanvasBar
+        section={section}
+        workspaces={registry?.workspaces ?? []}
+        selectedWorkspaceId={selectedWorkspaceId}
+        serviceStatus={serviceStatus}
+        recovered={recovered}
+        latency={latency}
+        onSwitchWorkspace={(workspaceId) => void switchWorkspace(workspaceId)}
+        onAddWorkspace={() => setDialogOpen(true)}
+        onStopAll={() => void stopAll()}
+        request={request}
+      />
+
+      <section className="workspace v2-workspace">
+        <div className={section === "today" ? "content content-command" : "content v2-content"}>
           {selectedWorkspace && !selectedWorkspace.available && <div className="warning-banner" role="alert"><span><strong>{selectedWorkspace.name} is unavailable.</strong> Its identity and settings are preserved.</span><button onClick={locateWorkspace}>Locate folder</button></div>}
           {selectedWorkspace?.instructionIssues?.length ? <div className="warning-banner" role="alert"><span><strong>Instruction files need review.</strong> {selectedWorkspace.instructionIssues.map((issue) => issue.code).join(", ")}</span><a href="/settings/">Review settings</a></div> : null}
           {workspaceError && <div className="warning-banner" role="alert"><span>{workspaceError}</span><button onClick={() => setWorkspaceError("")}>Dismiss</button></div>}
-          {section !== "today" && <><p className="eyebrow">{content.eyebrow}</p><h1>{content.title}</h1><p className="lede">{content.body}</p></>}
+          {section !== "today" && <header className="v2-page-heading"><div><p className="eyebrow">{content.eyebrow}</p><h1>{content.title}</h1></div><p className="lede">{content.body}</p><span>{section.toUpperCase()} / {selectedWorkspace?.name ?? "SETUP"}</span></header>}
 
+          <div className="v2-route-body" key={`${section}:${selectedWorkspace?.id ?? "setup"}`}>
           {section === "today" && selectedWorkspace ? (
             <div className="command-stack">
-              <CommandCenter
+              {features["command-center"] !== false ? <CommandCenter
                 workspace={selectedWorkspace}
                 workspaces={registry?.workspaces ?? [selectedWorkspace]}
                 request={request}
@@ -520,7 +554,7 @@ export function Shell({ section }: { section: SectionId }) {
                 onAddWorkspace={() => setDialogOpen(true)}
                 onIsolationProbe={() => void runIsolationProbe()}
                 onSimulateCrash={() => window.voidra?.diagnostics?.simulateServiceCrash()}
-              />
+              /> : <article className="panel v2-feature-disabled"><p className="card-label">COMMAND CENTER DISABLED</p><h2>V2 dashboard rollback is active.</h2><p>Canonical workspace data remains intact. Re-enable the command-center bundle in Settings when you are ready.</p><a href="/settings/">Open feature controls →</a></article>}
               <section id="today-planner" className="today-planner-section" aria-labelledby="today-planner-title">
                 <div className="today-planner-heading"><p className="eyebrow">Your local day</p><h2 id="today-planner-title">Plan the day</h2><p>{content.body}</p></div>
                 <PlannerPanel workspaceId={selectedWorkspace.id} request={request} />
@@ -535,7 +569,7 @@ export function Shell({ section }: { section: SectionId }) {
           ) : section === "assistant" && selectedWorkspace ? (
             <div className="assistant-stack"><VoicePanel workspaceId={selectedWorkspace.id} request={request} /><AgentPanel workspaceId={selectedWorkspace.id} request={request} /><MemoryPanel workspaceId={selectedWorkspace.id} request={request} /></div>
           ) : section === "jobs" && selectedWorkspace ? (
-            <div className="assistant-stack"><SchedulePanel workspaceId={selectedWorkspace.id} request={request} /><HandoffPanel workspaceId={selectedWorkspace.id} request={request} /></div>
+            <div className="assistant-stack"><RunTimelinePanel workspaceId={selectedWorkspace.id} request={request} />{features.catalog !== false && <OutputCatalogPanel workspaceId={selectedWorkspace.id} request={request} />}{features.headless !== false && <HeadlessPanel workspaceId={selectedWorkspace.id} request={request} />}<SchedulePanel workspaceId={selectedWorkspace.id} request={request} />{features.skills !== false && <HandoffPanel workspaceId={selectedWorkspace.id} request={request} />}</div>
           ) : section === "browser" && selectedWorkspace ? (
             <BrowserPanel workspace={selectedWorkspace} request={request} />
           ) : section === "mac" && selectedWorkspace ? (
@@ -544,15 +578,16 @@ export function Shell({ section }: { section: SectionId }) {
             <RemotePanel workspaceId={selectedWorkspace.id} workspaceName={selectedWorkspace.name} request={request} />
           ) : (
             <div className="grid">
-              <article className="hero-card"><div className="orb" aria-hidden="true"><span /></div><div><p className="card-label">{selectedWorkspace ? "WORKSPACE CONTEXT" : "DESKTOP SHELL"}</p><h2>{selectedWorkspace ? selectedWorkspace.name : "Choose your workspace."}</h2><p>{selectedWorkspace ? selectedWorkspace.canonicalPath : "Voidra keeps each assistant context in a directory you choose."}</p><button className="primary" onClick={ping} disabled={!bridgeAvailable || serviceStatus !== "ready"}>Check runtime</button></div></article>
+              <article className="panel"><p className="card-label">{selectedWorkspace ? "WORKSPACE CONTEXT" : "DESKTOP SHELL"}</p><h2>{selectedWorkspace ? selectedWorkspace.name : "Choose your workspace."}</h2><p>{selectedWorkspace ? selectedWorkspace.canonicalPath : "Voidra keeps each assistant context in a directory you choose."}</p><button className="primary" onClick={ping} disabled={!bridgeAvailable || serviceStatus !== "ready"}>Check runtime</button></article>
               <article className="panel" aria-live="polite"><p className="card-label">FOUNDATION DIAGNOSTICS</p><dl>
                 <div><dt>Renderer bridge</dt><dd>{bridgeAvailable ? "Connected" : "Web preview"}</dd></div>
-                <div><dt>Service</dt><dd data-testid="service-status">{recovered ? "Recovered" : serviceStatus}</dd></div>
+                <div><dt>Service</dt><dd data-testid="settings-service-status">{recovered ? "Recovered" : serviceStatus}</dd></div>
                 <div><dt>Workspace identity</dt><dd data-testid="workspace-id">{selectedWorkspace?.id ?? "Awaiting setup"}</dd></div>
                 <div><dt>Content isolation</dt><dd data-testid="isolation-result">{isolationMessage}</dd></div>
               </dl><div className="button-row">{diagnosticsAvailable && <button onClick={runIsolationProbe}>Test isolation</button>}{diagnosticsAvailable && <button onClick={() => window.voidra?.diagnostics?.simulateServiceCrash()}>Simulate crash</button>}</div></article>
             </div>
           )}
+          </div>
         </div>
       </section>
       {dialogOpen && <WorkspaceDialog required={!registry?.workspaces.length} request={request} onComplete={async () => { sessionStorage.setItem("voidra.startupChoiceMade", "true"); await loadRegistry(); }} onClose={() => setDialogOpen(false)} />}

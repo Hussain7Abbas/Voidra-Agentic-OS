@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -10,6 +10,7 @@ import { KnowledgeManager } from "../../src/service/knowledge";
 import { NoteCoordinator } from "../../src/service/notes";
 import { PlannerScheduler, nextDailyOccurrence, resolveLocalOccurrence } from "../../src/service/planner";
 import { WorkspaceManager } from "../../src/service/workspaces";
+import { HeadlessRunner } from "../../src/service/headless";
 
 const temporaryDirectories: string[] = [];
 
@@ -23,9 +24,10 @@ async function fixture(notify = vi.fn()) {
   const agentTasks: Array<{ id: string; status: string }> = [];
   const start = vi.fn().mockImplementation(async () => { const task = { id: crypto.randomUUID(), status: "running" }; agentTasks.push(task); return task; });
   const agents = { start, list: vi.fn().mockImplementation(async () => ({ tasks: agentTasks, grants: [] })) } as unknown as AgentTaskManager;
-  const planner = new PlannerScheduler(handoffs, agents, knowledge, notify);
+  const headless = new HeadlessRunner();
+  const planner = new PlannerScheduler(handoffs, agents, knowledge, notify, headless);
   const close = () => { notes.close(); database.close(); };
-  return { directory, database, workspaces, work, personal, notes, knowledge, handoffs, planner, start, agentTasks, notify, close };
+  return { directory, database, workspaces, work, personal, notes, knowledge, handoffs, planner, headless, start, agentTasks, notify, close };
 }
 
 afterEach(async () => { await Promise.all(temporaryDirectories.splice(0).map((directory) => rm(directory, { recursive: true, force: true }))); });
@@ -95,6 +97,26 @@ describe("PlannerScheduler", () => {
     const reopened = new PlannerScheduler(handoffs, { start: vi.fn() } as unknown as AgentTaskManager, knowledge);
     expect(await reopened.tick([work], new Date("2026-09-20T08:01:00.000Z"))).toEqual([]);
     expect((await reopened.list(work)).occurrences).toHaveLength(1);
+    close();
+  });
+
+  it("dispatches an awake-only headless routine with immutable provenance and follows its terminal state", async () => {
+    const { directory, work, handoffs, planner, headless, close } = await fixture();
+    const bin = join(directory, "bin"); await mkdir(bin);
+    const executable = join(bin, "codex");
+    await writeFile(executable, `#!/usr/bin/env node\nif(process.argv.includes("--version")){console.log("codex fixture 1.0");process.exit(0)}let input="";process.stdin.on("data",c=>input+=c);process.stdin.on("end",()=>console.log(JSON.stringify({type:"result",received:input.length})))\n`);
+    await chmod(executable, 0o755);
+    const skill = await handoffs.createSkill(work, { name: "Scheduled report", description: "fixture", instructions: "Return a report.", expectedOutput: "a report", inputs: [] });
+    const routine = await handoffs.createRoutine(work, { name: "Headless report", skillId: skill.id, client: "codex", preferredModel: "use current client model", outputDirectory: ".", inlineInstructions: "", executionMode: "headless", headlessExecutablePath: executable, headlessAccessMode: "read-only", headlessMaxRuntimeMs: 5_000 });
+    const schedule = await planner.createSchedule(work, { name: "Headless daily", mode: "manual", routineId: routine.id, objective: "Prepare the report", localTime: "08:00", timezone: "UTC", missedPolicy: "skip" }, new Date("2026-09-20T07:00:00.000Z"));
+    const [claimed] = await planner.tick([work], new Date("2026-09-20T08:01:00.000Z"));
+    expect(claimed).toMatchObject({ scheduleId: schedule.id, state: "running" });
+    let run = (await headless.list(work))[0]!;
+    for (let attempt = 0; attempt < 100 && !["completed", "failed", "cancelled", "interrupted"].includes(run.status); attempt += 1) { await new Promise((resolve) => setTimeout(resolve, 20)); run = (await headless.list(work))[0]!; }
+    expect(run).toMatchObject({ status: "completed", provenance: { routineId: routine.id, trigger: "scheduled", skillBundleDigest: skill.currentDigest } });
+    expect(run.provenance?.contextManifestDigest).toMatch(/^[a-f0-9]{64}$/);
+    expect((await planner.list(work)).occurrences.find(({ scheduleId }) => scheduleId === schedule.id)?.state).toBe("completed");
+    expect(await handoffs.listRuns(work)).toEqual([]);
     close();
   });
 
